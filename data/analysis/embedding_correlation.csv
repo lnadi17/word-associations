@@ -1,0 +1,7 @@
+metric,value
+pearson_r,-0.04337925463914871
+pearson_p,0.7254023442020483
+spearman_r,-0.08213856825177354
+spearman_p,0.5054744222249548
+missing_words,0
+missing_edges,0

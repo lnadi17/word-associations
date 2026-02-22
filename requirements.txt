@@ -1,0 +1,7 @@
+anthropic
+gensim
+numpy
+pyyaml
+requests
+scipy
+tqdm

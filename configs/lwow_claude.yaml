@@ -1,0 +1,37 @@
+paths:
+  cue_stats_path: "lexicon/SWOW-EN18/cueStats.SWOW-EN.R123.20180827.csv"
+  raw_output_path: "data/raw/claude_opus45_responses.csv"
+  processed_output_path: "data/processed/claude_opus45_processed.csv"
+  edge_list_output_path: "data/processed/claude_opus45_edges.csv"
+  embedding_analysis_path: "data/analysis/embedding_correlation.csv"
+  outliers_path: "data/analysis/outliers.csv"
+
+sampling:
+  num_cues: 20
+  seed: 42
+
+generation:
+  model: "claude-opus-4-5"
+  max_tokens: 32
+  temperature: 0.7
+  repetitions_per_cue: 5
+  max_retries: 3
+  retry_backoff_sec: 1.5
+  request_timeout_sec: 60
+
+processing:
+  repetitions_per_cue: 5
+  seed: 42
+
+embeddings:
+  provider: "gensim"
+  model_name: "glove-wiki-gigaword-100"
+  model_path: "path/to/word2vec.bin"
+  oov_strategy: "skip"
+  model: "voyage-3.5"
+  batch_size: 64
+  input_type: "document"
+
+analysis:
+  count_percentile: 0.9
+  distance_percentile: 0.9
