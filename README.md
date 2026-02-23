@@ -1,16 +1,17 @@
 # word-associations
 
 ## TODO
-- [ ] Add LWOW dataset
-- [ ] Add SWOW dataset
-- [ ] Add Georgian population demographic dataset
-- [ ] Create notebook for AI persona creation
-- [ ] Search SWOW/LWOW with association strengths
+- [x] Add LWOW dataset
+- [x] Add SWOW dataset
+- [ ] Implement batch processing for Claude Opus 4.5
+- [ ] Contact Claude sales for research discount
+- [ ] Ability to search SWOW/LWOW sorted by association strengths
 - [ ] Find overlapping/unique words for SWOW/LWOW
 
-## Datasets
+- [ ] Add Georgian population demographic dataset
+- [ ] Create notebook for AI persona creation
 
-### 
+## Datasets
 
 ### NRC Valence, Arousal, Dominance
 These dimensions impact various aspects of our lives from social competence and emotion regulation to success in the work place and how we view the world. The NRC VAD Lexicon v2 has human ratings of valence, arousal, and dominance for more than 55,000 English words and phrases.
