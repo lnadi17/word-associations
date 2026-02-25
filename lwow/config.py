@@ -47,6 +47,13 @@ class GenerationConfig:
     output_cost_per_mtok: float = 25.0
     cache_creation_input_cost_per_mtok: float = 6.25
     cache_read_input_cost_per_mtok: float = 0.5
+    campaign_name: str = ""
+    campaign_root_dir: str = "data/campaigns"
+    cue_start_index: int = 0
+    cue_count: int = 0
+    master_seed: int = 42
+    max_open_batches: int = 1
+    submission_mode: str = "incremental"
     prompt_template: str = (
         "Task: "
         "• You will be provided with an input word: write the first 3 words you associate to it separated by a comma"

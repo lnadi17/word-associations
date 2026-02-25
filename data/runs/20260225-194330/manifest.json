@@ -1,0 +1,16 @@
+{
+  "run_id": "20260225-194330",
+  "state": "completed",
+  "created_at": "2026-02-25T19:43:32.137300+00:00",
+  "updated_at": "2026-02-25T19:49:16.585047+00:00",
+  "config_path": "configs/lwow_claude_sonnet46.yaml",
+  "run_dir": "data/runs/20260225-194330",
+  "request_index_path": "data/runs/20260225-194330/request_index.json",
+  "checkpoint_path": "data/runs/20260225-194330/checkpoint.json",
+  "rows_jsonl_path": "data/runs/20260225-194330/rows.jsonl",
+  "usage_jsonl_path": "data/runs/20260225-194330/usage.jsonl",
+  "progress_path": "data/runs/20260225-194330/progress.json",
+  "cost_path": "data/runs/20260225-194330/cost_summary.json",
+  "raw_output_path": "data/raw/claude_sonnet46_responses.csv",
+  "total_requests": 1000
+}

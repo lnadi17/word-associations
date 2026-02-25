@@ -6,11 +6,12 @@ import json
 import os
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from lwow.campaign import append_completed_entries, load_completed_ids
 from lwow.clients.anthropic_client import AnthropicTextClient
 from lwow.io import ensure_parent_dir
 
@@ -56,6 +57,17 @@ def _append_jsonl(path: str | Path, row: Dict[str, Any]) -> None:
     ensure_parent_dir(path)
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def _append_csv_row(path: str | Path, row: Dict[str, Any], fieldnames: List[str]) -> None:
+    ensure_parent_dir(path)
+    target = Path(path)
+    needs_header = (not target.exists()) or target.stat().st_size == 0
+    with open(target, "a", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        if needs_header:
+            writer.writeheader()
+        writer.writerow(row)
 
 
 def _read_jsonl(path: str | Path) -> List[Dict[str, Any]]:
@@ -137,12 +149,18 @@ class GenerationRunner:
     enable_prompt_caching: bool
     cache_control_type: str
     pricing: Dict[str, float]
+    campaign_name: str = ""
+    campaign_paths: Optional[Dict[str, str]] = None
+    max_open_batches: int = 1
+    submission_mode: str = "incremental"
+    campaign_completed_ids: set[str] = field(default_factory=set)
+    skipped_existing_requests: int = 0
 
     def _make_request_index(self, cues: List[str]) -> List[Dict[str, Any]]:
         requests_index: List[Dict[str, Any]] = []
-        for cue_idx, cue in enumerate(cues):
+        for cue in cues:
             for trial in range(self.repetitions_per_cue):
-                raw_id = f"{cue_idx}:{trial}:{cue}"
+                raw_id = f"{cue}|{trial}"
                 custom_id = hashlib.sha1(raw_id.encode("utf-8")).hexdigest()[:16]
                 requests_index.append(
                     {
@@ -236,6 +254,8 @@ class GenerationRunner:
             "usage_totals": totals,
             "estimated_cost_usd": round(cost_usd, 6),
             "open_batches": len(checkpoint.get("open_batches", {})),
+            "skipped_existing_requests": self.skipped_existing_requests,
+            "campaign_name": self.campaign_name or "",
         }
         _atomic_write_json(manifest["progress_path"], progress)
         _atomic_write_json(
@@ -272,6 +292,19 @@ class GenerationRunner:
                     }
                 )
 
+    def _append_to_output_csv(self, manifest: Dict[str, Any], row: Dict[str, Any]) -> None:
+        _append_csv_row(
+            manifest["raw_output_path"],
+            {
+                "cue": row.get("cue", ""),
+                "trial": row.get("trial", 0),
+                "raw_text": row.get("raw_text", ""),
+                "parsed": row.get("parsed", ""),
+                "ok": bool(row.get("ok", False)),
+            },
+            fieldnames=["cue", "trial", "raw_text", "parsed", "ok"],
+        )
+
     def _load_usage_totals(self, usage_jsonl_path: str) -> Dict[str, float]:
         totals = {
             "input_tokens": 0.0,
@@ -305,11 +338,21 @@ class GenerationRunner:
             and row["custom_id"] not in submitted_ids
             and row["custom_id"] not in completed_ids
             and row["custom_id"] not in failed_ids
+            and row["custom_id"] not in self.campaign_completed_ids
         ]
         if not pending:
             return checkpoint
 
+        max_open_batches = self.max_open_batches if self.max_open_batches > 0 else 1_000_000
+        open_count = len(checkpoint.get("open_batches", {}))
+        available_slots = max_open_batches - open_count
+        if available_slots <= 0 and self.submission_mode == "incremental":
+            return checkpoint
+
+        submitted_batches = 0
         for batch_items in _chunk(pending, self.batch_request_limit):
+            if self.submission_mode == "incremental" and submitted_batches >= available_slots:
+                break
             latest_manifest = _read_json(manifest["run_dir"] + "/manifest.json", manifest)
             if latest_manifest.get("state") == "paused":
                 manifest["state"] = "paused"
@@ -341,6 +384,7 @@ class GenerationRunner:
             checkpoint.setdefault("submitted_ids", [])
             checkpoint["submitted_ids"].extend([item["custom_id"] for item in batch_items])
             _atomic_write_json(manifest["checkpoint_path"], checkpoint)
+            submitted_batches += 1
         return checkpoint
 
     def _collect_finished_batches(
@@ -354,17 +398,38 @@ class GenerationRunner:
 
         request_index = _read_json(manifest["request_index_path"], {"requests": []}).get("requests", [])
         by_id = {row["custom_id"]: row for row in request_index if row.get("custom_id")}
+        submitted_ids = set(checkpoint.get("submitted_ids", []))
         completed_ids = set(checkpoint.get("completed_ids", []))
         failed_ids = set(checkpoint.get("failed_ids", []))
         processed_since_flush = 0
 
         for batch_id in list(open_batches.keys()):
-            status = self.client.get_batch_status(batch_id)
+            status = self.client.get_batch_status(batch_id, allow_not_found=True)
+            if status.get("_not_found"):
+                # Remote batch no longer exists; re-queue unfinished request IDs for resubmission.
+                batch_meta = open_batches.get(batch_id, {})
+                for request_id in batch_meta.get("request_ids", []):
+                    if request_id not in completed_ids and request_id not in failed_ids:
+                        submitted_ids.discard(request_id)
+                checkpoint["submitted_ids"] = sorted(submitted_ids)
+                checkpoint["open_batches"].pop(batch_id, None)
+                _atomic_write_json(manifest["checkpoint_path"], checkpoint)
+                continue
+
             processing_status = str(status.get("processing_status") or "")
             if processing_status and processing_status not in ("ended", "completed", "succeeded"):
                 continue
 
-            results_payload = self.client.get_batch_results(batch_id)
+            results_payload = self.client.get_batch_results(batch_id, allow_not_found=True)
+            if results_payload.get("_not_found"):
+                batch_meta = open_batches.get(batch_id, {})
+                for request_id in batch_meta.get("request_ids", []):
+                    if request_id not in completed_ids and request_id not in failed_ids:
+                        submitted_ids.discard(request_id)
+                checkpoint["submitted_ids"] = sorted(submitted_ids)
+                checkpoint["open_batches"].pop(batch_id, None)
+                _atomic_write_json(manifest["checkpoint_path"], checkpoint)
+                continue
             results = results_payload.get("data") if isinstance(results_payload.get("data"), list) else []
             for result_item in results:
                 if not isinstance(result_item, dict):
@@ -379,18 +444,29 @@ class GenerationRunner:
 
                 parsed = parse_associations(raw_text)
                 ok = len(parsed) == 3
-                _append_jsonl(
-                    manifest["rows_jsonl_path"],
-                    {
-                        "custom_id": custom_id,
-                        "cue": request_row["cue"],
-                        "trial": request_row["trial"],
-                        "raw_text": raw_text,
-                        "parsed": "|".join(parsed),
-                        "ok": ok,
-                        "updated_at": _utc_now_iso(),
-                    },
-                )
+                row_record = {
+                    "custom_id": custom_id,
+                    "cue": request_row["cue"],
+                    "trial": request_row["trial"],
+                    "raw_text": raw_text,
+                    "parsed": "|".join(parsed),
+                    "ok": ok,
+                    "updated_at": _utc_now_iso(),
+                }
+                if self.campaign_paths:
+                    added = append_completed_entries(
+                        ledger_path=self.campaign_paths["ledger_path"],
+                        index_path=self.campaign_paths["index_path"],
+                        rows=[row_record],
+                    )
+                    if added <= 0:
+                        # Already recorded at campaign level; treat as completed for this run.
+                        completed_ids.add(custom_id)
+                        self.campaign_completed_ids.add(custom_id)
+                        continue
+                    self.campaign_completed_ids.add(custom_id)
+
+                _append_jsonl(manifest["rows_jsonl_path"], row_record)
                 _append_jsonl(
                     manifest["usage_jsonl_path"],
                     {
@@ -399,6 +475,7 @@ class GenerationRunner:
                         "updated_at": _utc_now_iso(),
                     },
                 )
+                self._append_to_output_csv(manifest, row_record)
                 completed_ids.add(custom_id)
                 processed_since_flush += 1
                 if processed_since_flush >= self.checkpoint_every_n_results:
@@ -408,6 +485,7 @@ class GenerationRunner:
                     processed_since_flush = 0
 
             checkpoint["open_batches"].pop(batch_id, None)
+            checkpoint["submitted_ids"] = sorted(submitted_ids)
             checkpoint["completed_ids"] = sorted(completed_ids)
             checkpoint["failed_ids"] = sorted(failed_ids)
             _atomic_write_json(manifest["checkpoint_path"], checkpoint)
@@ -429,7 +507,20 @@ class GenerationRunner:
             cues=cues,
         )
         manifest["state"] = "running"
+        if self.campaign_name:
+            manifest["campaign_name"] = self.campaign_name
+        if self.campaign_paths:
+            manifest["campaign_root"] = self.campaign_paths.get("root_dir", "")
         self._write_manifest(manifest)
+        if self.campaign_paths:
+            self.campaign_completed_ids = load_completed_ids(self.campaign_paths["index_path"])
+            request_index = _read_json(manifest["request_index_path"], {"requests": []}).get("requests", [])
+            self.skipped_existing_requests = sum(
+                1 for row in request_index if row.get("custom_id") in self.campaign_completed_ids
+            )
+        else:
+            self.campaign_completed_ids = set()
+            self.skipped_existing_requests = 0
 
         started = time.time()
         while True:
@@ -451,7 +542,9 @@ class GenerationRunner:
             if progress["remaining_requests"] <= 0 and progress["open_batches"] == 0:
                 manifest["state"] = "completed"
                 self._write_manifest(manifest)
-                self._export_rows_csv(manifest)
+                # In campaign mode, CSV is streamed continuously to avoid cross-run overwrite.
+                if not self.campaign_name:
+                    self._export_rows_csv(manifest)
                 progress = self._write_progress(manifest, checkpoint, totals)
                 return progress
 

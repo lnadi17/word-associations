@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
+from lwow.campaign import init_or_load_campaign, load_completed_ids, select_cue_window
 from lwow.clients.anthropic_client import AnthropicTextClient
 from lwow.config import RunConfig, load_config
 from lwow.generation import GenerationRunner
@@ -55,6 +56,9 @@ def _build_runner(config: RunConfig, client: AnthropicTextClient) -> GenerationR
             "cache_creation_input_per_mtok": g.cache_creation_input_cost_per_mtok,
             "cache_read_input_per_mtok": g.cache_read_input_cost_per_mtok,
         },
+        campaign_name=g.campaign_name,
+        max_open_batches=g.max_open_batches,
+        submission_mode=g.submission_mode,
     )
 
 
@@ -65,6 +69,41 @@ def _resolve_run_dir(config: RunConfig, run_id: str | None, run_dir: str | None)
     return Path(config.generation.run_root_dir) / resolved_run_id
 
 
+def _apply_generation_overrides(config: RunConfig, args: argparse.Namespace) -> None:
+    g = config.generation
+    if getattr(args, "campaign_name", None):
+        g.campaign_name = args.campaign_name
+    if getattr(args, "cue_start_index", None) is not None:
+        g.cue_start_index = args.cue_start_index
+    if getattr(args, "cue_count", None) is not None:
+        g.cue_count = args.cue_count
+    if getattr(args, "master_seed", None) is not None:
+        g.master_seed = args.master_seed
+    if getattr(args, "max_open_batches", None) is not None:
+        g.max_open_batches = args.max_open_batches
+
+
+def _resolve_sampled_cues(config: RunConfig) -> tuple[list[str], Dict[str, str] | None]:
+    cues = read_cue_stats(config.paths.cue_stats_path)
+    g = config.generation
+    if g.campaign_name:
+        campaign_paths = init_or_load_campaign(
+            campaign_root_dir=g.campaign_root_dir,
+            campaign_name=g.campaign_name,
+            all_cues=cues,
+            master_seed=g.master_seed,
+        )
+        cue_count = g.cue_count if g.cue_count > 0 else config.sampling.num_cues
+        sampled = select_cue_window(
+            master_cues_path=campaign_paths["master_cues_path"],
+            cue_start_index=g.cue_start_index,
+            cue_count=cue_count,
+        )
+        return sampled, campaign_paths
+    sampled = sample_cues(cues, config.sampling.num_cues, config.sampling.seed)
+    return sampled, None
+
+
 def _print_status(progress: Dict[str, Any], live: bool = False) -> None:
     message = (
         f"state={progress.get('state')} "
@@ -72,6 +111,7 @@ def _print_status(progress: Dict[str, Any], live: bool = False) -> None:
         f"failed={progress.get('failed_requests', 0)} "
         f"remaining={progress.get('remaining_requests', 0)} "
         f"open_batches={progress.get('open_batches', 0)} "
+        f"skipped_existing={progress.get('skipped_existing_requests', 0)} "
         f"cost_usd={progress.get('estimated_cost_usd', 0.0)}"
     )
     if live:
@@ -82,13 +122,14 @@ def _print_status(progress: Dict[str, Any], live: bool = False) -> None:
 
 def cmd_start(args: argparse.Namespace) -> None:
     config = load_config(args.config)
+    _apply_generation_overrides(config, args)
     run_dir = _resolve_run_dir(config, args.run_id, args.run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    cues = read_cue_stats(config.paths.cue_stats_path)
-    sampled = sample_cues(cues, config.sampling.num_cues, config.sampling.seed)
+    sampled, campaign_paths = _resolve_sampled_cues(config)
     client = _build_client(config)
     runner = _build_runner(config, client)
+    runner.campaign_paths = campaign_paths
 
     run_id = run_dir.name
     progress = runner.run_to_completion(
@@ -103,14 +144,15 @@ def cmd_start(args: argparse.Namespace) -> None:
 
 def cmd_resume(args: argparse.Namespace) -> None:
     config = load_config(args.config)
+    _apply_generation_overrides(config, args)
     run_dir = _resolve_run_dir(config, args.run_id, args.run_dir)
     if not (run_dir / "manifest.json").exists():
         raise ValueError(f"Cannot resume. No manifest found in {run_dir}")
 
-    cues = read_cue_stats(config.paths.cue_stats_path)
-    sampled = sample_cues(cues, config.sampling.num_cues, config.sampling.seed)
+    sampled, campaign_paths = _resolve_sampled_cues(config)
     client = _build_client(config)
     runner = _build_runner(config, client)
+    runner.campaign_paths = campaign_paths
     progress = runner.run_to_completion(
         run_dir=run_dir,
         run_id=run_dir.name,
@@ -119,6 +161,37 @@ def cmd_resume(args: argparse.Namespace) -> None:
         cues=sampled,
     )
     print(json.dumps({"run_dir": str(run_dir), "progress": progress}, indent=2))
+
+
+def cmd_campaign_status(args: argparse.Namespace) -> None:
+    config = load_config(args.config)
+    campaign_name = args.campaign_name or config.generation.campaign_name
+    if not campaign_name:
+        raise ValueError("campaign name is required (set in config or pass --campaign-name).")
+    all_cues = read_cue_stats(config.paths.cue_stats_path)
+    campaign_paths = init_or_load_campaign(
+        campaign_root_dir=config.generation.campaign_root_dir,
+        campaign_name=campaign_name,
+        all_cues=all_cues,
+        master_seed=config.generation.master_seed,
+    )
+    completed_ids = load_completed_ids(campaign_paths["index_path"])
+    master_cues = select_cue_window(
+        master_cues_path=campaign_paths["master_cues_path"],
+        cue_start_index=0,
+        cue_count=10_000_000,
+    )
+    print(
+        json.dumps(
+            {
+                "campaign_name": campaign_name,
+                "campaign_root": campaign_paths["root_dir"],
+                "master_cues_total": len(master_cues),
+                "completed_request_ids": len(completed_ids),
+            },
+            indent=2,
+        )
+    )
 
 
 def cmd_pause(args: argparse.Namespace) -> None:
@@ -173,12 +246,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_start.add_argument("--config", required=True, help="Path to YAML config.")
     p_start.add_argument("--run-id", default=None, help="Optional run ID.")
     p_start.add_argument("--run-dir", default=None, help="Optional run directory override.")
+    p_start.add_argument("--campaign-name", default=None, help="Campaign name for cross-run dedup.")
+    p_start.add_argument("--cue-start-index", type=int, default=None, help="Cue window start index.")
+    p_start.add_argument("--cue-count", type=int, default=None, help="Cue window size override.")
+    p_start.add_argument("--master-seed", type=int, default=None, help="Master cue ordering seed.")
+    p_start.add_argument("--max-open-batches", type=int, default=None, help="Limit concurrent open batches.")
     p_start.set_defaults(func=cmd_start)
 
     p_resume = sub.add_parser("resume", help="Resume an existing run.")
     p_resume.add_argument("--config", required=True, help="Path to YAML config.")
     p_resume.add_argument("--run-id", default=None, help="Run ID under configured run root.")
     p_resume.add_argument("--run-dir", default=None, help="Run directory override.")
+    p_resume.add_argument("--campaign-name", default=None, help="Campaign name for cross-run dedup.")
+    p_resume.add_argument("--cue-start-index", type=int, default=None, help="Cue window start index.")
+    p_resume.add_argument("--cue-count", type=int, default=None, help="Cue window size override.")
+    p_resume.add_argument("--master-seed", type=int, default=None, help="Master cue ordering seed.")
+    p_resume.add_argument("--max-open-batches", type=int, default=None, help="Limit concurrent open batches.")
     p_resume.set_defaults(func=cmd_resume)
 
     p_pause = sub.add_parser("pause", help="Pause an existing run.")
@@ -199,6 +282,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_status.add_argument("--as-json", action="store_true", help="Print JSON status.")
     p_status.set_defaults(func=cmd_status)
+
+    p_campaign = sub.add_parser("campaign-status", help="Inspect campaign-level dedup state.")
+    p_campaign.add_argument("--config", required=True, help="Path to YAML config.")
+    p_campaign.add_argument("--campaign-name", default=None, help="Campaign name override.")
+    p_campaign.set_defaults(func=cmd_campaign_status)
     return parser
 
 
