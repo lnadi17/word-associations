@@ -19,7 +19,7 @@ class PathsConfig:
 
 @dataclass
 class SamplingConfig:
-    num_cues: int = 1000
+    num_cues: int = 100
     seed: int = 42
 
 
@@ -28,15 +28,33 @@ class GenerationConfig:
     model: str = "claude-opus-4-5"
     max_tokens: int = 32
     temperature: float = 0.7
-    repetitions_per_cue: int = 100
-    max_retries: int = 3
-    retry_backoff_sec: float = 1.5
+    repetitions_per_cue: int = 10
+    max_retries: int = 3  # retained for compatibility
+    retry_backoff_sec: float = 1.5  # retained for compatibility
     request_timeout_sec: float = 60.0
+    api_base_url: str = "https://api.anthropic.com"
+    batch_request_limit: int = 200
+    batch_poll_interval_sec: float = 5.0
+    batch_timeout_sec: float = 7200.0
+    max_rate_limit_retries: int = 8
+    max_backoff_sec: float = 30.0
+    jitter_sec: float = 0.5
+    run_root_dir: str = "data/runs"
+    checkpoint_every_n_results: int = 50
+    enable_prompt_caching: bool = True
+    cache_control_type: str = "ephemeral"
+    input_cost_per_mtok: float = 5.0
+    output_cost_per_mtok: float = 25.0
+    cache_creation_input_cost_per_mtok: float = 6.25
+    cache_read_input_cost_per_mtok: float = 0.5
     prompt_template: str = (
-        "Task: • You will be provided with an input word: write the first 3 words "
-        "you associate to it separated by a comma • No additional output text is allowed "
-        " Constraints: • No carriage return characters are allowed in the answers "
-        "• Answers should be as short as possible  Example: Input: sea Output: water, beach, sun"
+        "Task: "
+        "• You will be provided with an input word: write the first 3 words you associate to it separated by a comma"
+        "• No additional output text is allowed"
+        "Constraints:"
+        "• No carriage return characters are allowed in the answers"
+        "• Answers should be as short as possible"
+        "Example: Input: sea Output: water, beach, sun"
     )
 
 

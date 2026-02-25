@@ -1,8 +1,8 @@
 paths:
   cue_stats_path: "lexicon/SWOW-EN18/cueStats.SWOW-EN.R123.20180827.csv"
-  raw_output_path: "data/raw/claude_opus45_responses.csv"
-  processed_output_path: "data/processed/claude_opus45_processed.csv"
-  edge_list_output_path: "data/processed/claude_opus45_edges.csv"
+  raw_output_path: "data/raw/claude_opus46_responses.csv"
+  processed_output_path: "data/processed/claude_opus46_processed.csv"
+  edge_list_output_path: "data/processed/claude_opus46_edges.csv"
   embedding_analysis_path: "data/analysis/embedding_correlation.csv"
   outliers_path: "data/analysis/outliers.csv"
 
@@ -11,13 +11,28 @@ sampling:
   seed: 42
 
 generation:
-  model: "claude-opus-4-5"
+  model: "claude-opus-4-6"
   max_tokens: 32
-  temperature: 0.7
+  temperature: 1.0
   repetitions_per_cue: 5
   max_retries: 3
   retry_backoff_sec: 1.5
   request_timeout_sec: 60
+  api_base_url: "https://api.anthropic.com"
+  batch_request_limit: 200
+  batch_poll_interval_sec: 5
+  batch_timeout_sec: 7200
+  max_rate_limit_retries: 8
+  max_backoff_sec: 30
+  jitter_sec: 0.5
+  run_root_dir: "data/runs"
+  checkpoint_every_n_results: 50
+  enable_prompt_caching: true
+  cache_control_type: "ephemeral"
+  input_cost_per_mtok: 5.0
+  output_cost_per_mtok: 25.0
+  cache_creation_input_cost_per_mtok: 6.25
+  cache_read_input_cost_per_mtok: 0.5
 
 processing:
   repetitions_per_cue: 5

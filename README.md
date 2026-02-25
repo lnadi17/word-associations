@@ -7,6 +7,10 @@
 - [ ] Contact Claude sales for research discount
 - [ ] Ability to search SWOW/LWOW sorted by association strengths
 - [ ] Find overlapping/unique words for SWOW/LWOW
+- [ ] Add Georgian population demographic dataset
+- [ ] Create notebook for AI persona creation
+- [x] Search SWOW/LWOW with association strengths
+- [x] Find overlapping/unique words for SWOW/LWOW
 
 - [ ] Add Georgian population demographic dataset
 - [ ] Create notebook for AI persona creation

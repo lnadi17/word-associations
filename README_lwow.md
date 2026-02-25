@@ -99,14 +99,52 @@ Edit `configs/lwow_claude.yaml`. Key options:
 
 **Script:** `scripts/generate_associations.py`
 
+This script now acts as a compatibility wrapper over the batch-first run manager. For operational control (start/resume/pause/live status), use `scripts/manage_generation.py`.
+
 1. Load cues from `cue_stats_path` (CSV with `cue` column); sample `num_cues` cues using `sampling.seed`.
-2. For each cue, send `repetitions_per_cue` prompts to Claude.
+2. Build deterministic request IDs for each `(cue, trial)` pair.
+3. Submit Message Batches to Claude, poll batch status, and collect results to checkpointed run artifacts.
 3. **Prompt format:**
   - System: fixed task instructions.  
   - User: `Input: <cue>\nOutput:`  
   - Expected response: exactly 3 words separated by commas (e.g. `water, beach, sun`).
-4. Parse responses: strip punctuation, split on comma, take first 3 tokens. If fewer than 3, retry up to `max_retries` with exponential backoff.
+4. Parse responses: strip punctuation, split on comma, take first 3 tokens.
 5. Write one row per (cue, trial) with columns: `cue`, `trial`, `raw_text`, `parsed` (pipe-separated), `ok` (True if 3 words parsed).
+
+Batch run artifacts are stored under `generation.run_root_dir` (default `data/runs/<run-id>/`) and include:
+- `manifest.json` (run state and paths)
+- `checkpoint.json` (open batches and completed/failed IDs)
+- `rows.jsonl` (parsed per-request rows)
+- `usage.jsonl` (per-request usage fields)
+- `progress.json` and `cost_summary.json` (live progress/cost snapshots)
+
+### Generation Lifecycle CLI
+
+**Script:** `scripts/manage_generation.py`
+
+Commands:
+
+```bash
+# Start a new run (creates data/runs/<timestamp> by default)
+PYTHONPATH=. python3 scripts/manage_generation.py start --config configs/lwow_claude.yaml
+
+# Resume a run
+PYTHONPATH=. python3 scripts/manage_generation.py resume --config configs/lwow_claude.yaml --run-dir data/runs/<run-id>
+
+# Pause a run (local orchestration pause)
+PYTHONPATH=. python3 scripts/manage_generation.py pause --run-dir data/runs/<run-id>
+
+# Live status
+PYTHONPATH=. python3 scripts/manage_generation.py status --run-dir data/runs/<run-id> --follow --refresh-sec 2
+
+# Live status with session-only cost cap (not persisted to run files)
+PYTHONPATH=. python3 scripts/manage_generation.py status --run-dir data/runs/<run-id> --follow --session-cost-limit-usd 5.0
+```
+
+Notes:
+- `status --follow` continuously refreshes progress and cost until terminal state.
+- `--session-cost-limit-usd` only applies to that follow session and is never saved to manifest/checkpoints.
+- Prompt caching and batch discounts can stack; cache hits in batches are best-effort.
 
 **Fixed system prompt (from config):**
 
