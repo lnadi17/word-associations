@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Any, Dict
 
 from lwow.campaign import init_or_load_campaign, load_completed_ids, select_cue_window
 from lwow.clients.anthropic_client import AnthropicTextClient
+from lwow.clients.openai_client import OpenAITextClient
 from lwow.config import RunConfig, load_config
 from lwow.generation import GenerationRunner
 from lwow.io import read_cue_stats
@@ -22,9 +24,10 @@ def _now_run_id() -> str:
     return datetime.now(tz=timezone.utc).strftime("%Y%m%d-%H%M%S")
 
 
-def _build_client(config: RunConfig) -> AnthropicTextClient:
+def _build_client(config: RunConfig) -> AnthropicTextClient | OpenAITextClient:
     g = config.generation
-    return AnthropicTextClient(
+    provider = g.api_provider.lower()
+    common = dict(
         model=g.model,
         max_tokens=g.max_tokens,
         temperature=g.temperature,
@@ -32,15 +35,21 @@ def _build_client(config: RunConfig) -> AnthropicTextClient:
         max_rate_limit_retries=g.max_rate_limit_retries,
         max_backoff_sec=g.max_backoff_sec,
         jitter_sec=g.jitter_sec,
-        api_base_url=g.api_base_url,
     )
+    if provider == "openai":
+        base_url = g.api_base_url if g.api_base_url != "https://api.anthropic.com" else "https://api.openai.com"
+        return OpenAITextClient(
+            **common,
+            api_base_url=base_url,
+            reasoning_effort=g.reasoning_effort or None,
+        )
+    return AnthropicTextClient(**common, api_base_url=g.api_base_url)
 
 
-def _build_runner(config: RunConfig, client: AnthropicTextClient) -> GenerationRunner:
+def _build_runner(config: RunConfig, client: AnthropicTextClient | OpenAITextClient) -> GenerationRunner:
     g = config.generation
     return GenerationRunner(
         client=client,
-        system_prompt=g.prompt_template,
         repetitions_per_cue=g.repetitions_per_cue,
         max_retries=g.max_retries,
         retry_backoff_sec=g.retry_backoff_sec,
@@ -48,13 +57,9 @@ def _build_runner(config: RunConfig, client: AnthropicTextClient) -> GenerationR
         batch_poll_interval_sec=g.batch_poll_interval_sec,
         batch_timeout_sec=g.batch_timeout_sec,
         checkpoint_every_n_results=g.checkpoint_every_n_results,
-        enable_prompt_caching=g.enable_prompt_caching,
-        cache_control_type=g.cache_control_type,
         pricing={
             "input_per_mtok": g.input_cost_per_mtok,
             "output_per_mtok": g.output_cost_per_mtok,
-            "cache_creation_input_per_mtok": g.cache_creation_input_cost_per_mtok,
-            "cache_read_input_per_mtok": g.cache_read_input_cost_per_mtok,
         },
         campaign_name=g.campaign_name,
         max_open_batches=g.max_open_batches,
@@ -105,12 +110,15 @@ def _resolve_sampled_cues(config: RunConfig) -> tuple[list[str], Dict[str, str] 
 
 
 def _print_status(progress: Dict[str, Any], live: bool = False) -> None:
+    ob = progress.get("open_batches", 0)
+    max_ob = progress.get("max_open_batches", 0)
+    ob_str = f"{ob}/{max_ob}" if max_ob > 0 else str(ob)
     message = (
         f"state={progress.get('state')} "
         f"completed={progress.get('completed_requests', 0)}/{progress.get('total_requests', 0)} "
         f"failed={progress.get('failed_requests', 0)} "
         f"remaining={progress.get('remaining_requests', 0)} "
-        f"open_batches={progress.get('open_batches', 0)} "
+        f"open_batches={ob_str} "
         f"skipped_existing={progress.get('skipped_existing_requests', 0)} "
         f"cost_usd={progress.get('estimated_cost_usd', 0.0)}"
     )
@@ -194,6 +202,40 @@ def cmd_campaign_status(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_release_stale_lock(args: argparse.Namespace) -> None:
+    """Remove .runner.lock when the owner process is dead. Use after a crashed runner."""
+    run_dir = Path(args.run_dir)
+    lock_path = run_dir / ".runner.lock"
+    if not lock_path.exists():
+        print(json.dumps({"run_dir": str(run_dir), "released": False, "reason": "no_lock_file"}, indent=2))
+        return
+    try:
+        owner_pid = lock_path.read_text(encoding="utf-8").strip()
+        if owner_pid and owner_pid.isdigit():
+            pid = int(owner_pid)
+            try:
+                os.kill(pid, 0)  # Check if process exists (no signal sent)
+                print(
+                    json.dumps(
+                        {
+                            "run_dir": str(run_dir),
+                            "released": False,
+                            "reason": "process_alive",
+                            "owner_pid": pid,
+                            "hint": f"Process {pid} is still running. To stop it: kill {pid}",
+                        },
+                        indent=2,
+                    )
+                )
+                return
+            except ProcessLookupError:
+                pass  # Process is dead
+    except (OSError, ValueError):
+        pass
+    lock_path.unlink()
+    print(json.dumps({"run_dir": str(run_dir), "released": True}, indent=2))
+
+
 def cmd_pause(args: argparse.Namespace) -> None:
     run_dir = Path(args.run_dir)
     client = None
@@ -263,6 +305,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_resume.add_argument("--master-seed", type=int, default=None, help="Master cue ordering seed.")
     p_resume.add_argument("--max-open-batches", type=int, default=None, help="Limit concurrent open batches.")
     p_resume.set_defaults(func=cmd_resume)
+
+    p_release = sub.add_parser("release-stale-lock", help="Remove lock when owner process is dead.")
+    p_release.add_argument("--run-dir", required=True, help="Run directory.")
+    p_release.set_defaults(func=cmd_release_stale_lock)
 
     p_pause = sub.add_parser("pause", help="Pause an existing run.")
     p_pause.add_argument("--run-dir", required=True, help="Run directory.")

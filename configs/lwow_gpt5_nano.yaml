@@ -1,0 +1,59 @@
+paths:
+  cue_stats_path: "lexicon/SWOW-EN18/cueStats.SWOW-EN.R123.20180827.csv"
+  raw_output_path: "data/raw/gpt5_nano_responses.csv"
+  processed_output_path: "lexicon/LWOW_datasets/processed_datasets/FA_gpt5_nano.csv"
+  edge_list_output_path: "lexicon/LWOW_datasets/graphs/edge_lists/FA_gpt5_nano_edgelist.csv"
+  embedding_analysis_path: "data/analysis/embedding_correlation.csv"
+  outliers_path: "data/analysis/outliers.csv"
+  spelling_dict_path: "lexicon/mapping_tables/EnglishCustomDict.txt"
+  dataset_name: "gpt5_nano"
+
+sampling:
+  num_cues: 10
+  seed: 42
+
+generation:
+  model: "gpt-5-nano-2025-08-07"
+  max_tokens: 384
+  temperature: 1.0
+  reasoning_effort: "minimal"
+  repetitions_per_cue: 100
+  max_retries: 3
+  retry_backoff_sec: 1.5
+  request_timeout_sec: 60
+  api_provider: "openai"
+  api_base_url: "https://api.openai.com"
+  batch_request_limit: 200
+  batch_poll_interval_sec: 5
+  batch_timeout_sec: 7200
+  max_rate_limit_retries: 8
+  max_backoff_sec: 30
+  jitter_sec: 0.5
+  run_root_dir: "data/runs"
+  checkpoint_every_n_results: 50
+  input_cost_per_mtok: 0.05
+  output_cost_per_mtok: 0.40
+  campaign_name: ""
+  campaign_root_dir: "data/campaigns"
+  cue_start_index: 0
+  cue_count: 0
+  master_seed: 42
+  max_open_batches: 100
+  submission_mode: "incremental"
+
+processing:
+  repetitions_per_cue: 100
+  seed: 42
+
+embeddings:
+  provider: "gensim"
+  model_name: "glove-wiki-gigaword-100"
+  model_path: "path/to/word2vec.bin"
+  oov_strategy: "skip"
+  model: "voyage-3.5"
+  batch_size: 64
+  input_type: "document"
+
+analysis:
+  count_percentile: 0.9
+  distance_percentile: 0.9

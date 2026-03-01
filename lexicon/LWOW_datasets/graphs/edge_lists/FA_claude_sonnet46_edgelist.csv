@@ -1,0 +1,8 @@
+src,tgt,wt
+slow,linger,6
+moment,linger,2
+linger,stay,100
+linger,delay,56
+linger,remain,75
+linger,time,14
+linger,wait,34

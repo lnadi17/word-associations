@@ -123,32 +123,9 @@ class AnthropicTextClient:
         self,
         system_prompt: str,
         cue: str,
-        enable_prompt_caching: bool = False,
-        cache_control_type: str = "ephemeral",
     ) -> Dict[str, Any]:
         system_blocks: List[Dict[str, Any]] = [{"type": "text", "text": system_prompt}]
-        user_blocks: List[Dict[str, Any]] = []
-
-        if enable_prompt_caching:
-            system_blocks = [
-                {
-                    "type": "text",
-                    "text": system_prompt,
-                    "cache_control": {"type": cache_control_type},
-                }
-            ]
-            # Keep the repeated prefix stable for better best-effort cache hits.
-            user_blocks = [
-                {
-                    "type": "text",
-                    "text": "Input: ",
-                    "cache_control": {"type": cache_control_type},
-                },
-                {"type": "text", "text": cue},
-                {"type": "text", "text": "\nOutput:"},
-            ]
-        else:
-            user_blocks = [{"type": "text", "text": f"Input: {cue}\nOutput:"}]
+        user_blocks: List[Dict[str, Any]] = [{"type": "text", "text": f"Input: {cue}\nOutput:"}]
 
         return {
             "model": self.model,

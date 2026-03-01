@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import fcntl
 import hashlib
 import json
 import os
@@ -13,10 +14,24 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from lwow.campaign import append_completed_entries, load_completed_ids
 from lwow.clients.anthropic_client import AnthropicTextClient
+from lwow.clients.openai_client import OpenAITextClient
+from lwow.config import load_config
 from lwow.io import ensure_parent_dir
 
 
 _PUNCT_RE = re.compile(r"[\"'“”‘’`]")
+SYSTEM_PROMPT = """Task:
+ - You will be provided with an input word: write the first 3 words you associate to it separated by a comma.
+ - No additional output text is allowed.
+
+Constraints:
+ - no carriage return characters are allowed in the answers.
+ - answers should be as short as possible.
+
+Example:
+Input: sea
+Output: water,beach,sun
+"""
 
 
 def parse_associations(text: str, expected: int = 3) -> List[str]:
@@ -36,10 +51,55 @@ def _utc_now_iso() -> str:
 def _atomic_write_json(path: str | Path, payload: Dict[str, Any]) -> None:
     target = Path(path)
     ensure_parent_dir(target)
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False, indent=2)
-    os.replace(tmp, target)
+    # Use a unique temp name to avoid collisions across concurrent processes.
+    tmp = target.with_name(f"{target.name}.{os.getpid()}.{time.time_ns()}.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+        os.replace(tmp, target)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+
+def _acquire_run_lock(run_dir: str | Path):
+    run_path = Path(run_dir)
+    lock_path = run_path / ".runner.lock"
+    ensure_parent_dir(lock_path)
+    handle = open(lock_path, "a+", encoding="utf-8")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        handle.seek(0)
+        owner_pid = (handle.read() or "").strip()
+        handle.close()
+        owner_suffix = f" (owner pid: {owner_pid})" if owner_pid else ""
+        raise RuntimeError(
+            f"Run directory is already active: {run_path}{owner_suffix}. "
+            f"Stop the other runner before resuming this run."
+        )
+    handle.seek(0)
+    handle.truncate(0)
+    handle.write(str(os.getpid()))
+    handle.flush()
+    os.fsync(handle.fileno())
+    return handle
+
+
+def _release_run_lock(lock_handle) -> None:
+    if lock_handle is None:
+        return
+    try:
+        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        pass
+    try:
+        lock_handle.close()
+    except OSError:
+        pass
 
 
 def _read_json(path: str | Path, default: Dict[str, Any]) -> Dict[str, Any]:
@@ -125,20 +185,15 @@ def _extract_result_data(item: Dict[str, Any]) -> Tuple[str, Dict[str, Any], Opt
 def _estimate_cost_usd(totals: Dict[str, float], pricing: Dict[str, float]) -> float:
     input_tokens = totals.get("input_tokens", 0.0)
     output_tokens = totals.get("output_tokens", 0.0)
-    cache_create_tokens = totals.get("cache_creation_input_tokens", 0.0)
-    cache_read_tokens = totals.get("cache_read_input_tokens", 0.0)
     return (
         (input_tokens / 1_000_000.0) * pricing["input_per_mtok"]
         + (output_tokens / 1_000_000.0) * pricing["output_per_mtok"]
-        + (cache_create_tokens / 1_000_000.0) * pricing["cache_creation_input_per_mtok"]
-        + (cache_read_tokens / 1_000_000.0) * pricing["cache_read_input_per_mtok"]
     )
 
 
 @dataclass
 class GenerationRunner:
-    client: AnthropicTextClient
-    system_prompt: str
+    client: AnthropicTextClient | OpenAITextClient
     repetitions_per_cue: int
     max_retries: int
     retry_backoff_sec: float
@@ -146,8 +201,6 @@ class GenerationRunner:
     batch_poll_interval_sec: float
     batch_timeout_sec: float
     checkpoint_every_n_results: int
-    enable_prompt_caching: bool
-    cache_control_type: str
     pricing: Dict[str, float]
     campaign_name: str = ""
     campaign_paths: Optional[Dict[str, str]] = None
@@ -241,6 +294,7 @@ class GenerationRunner:
         remaining = max(total - completed - failed, 0)
         pct = (completed / total * 100.0) if total else 0.0
         cost_usd = _estimate_cost_usd(totals=totals, pricing=self.pricing)
+        open_batches = len(checkpoint.get("open_batches", {}))
         progress = {
             "run_id": manifest.get("run_id"),
             "state": manifest.get("state"),
@@ -253,7 +307,8 @@ class GenerationRunner:
             "percent_complete": round(pct, 4),
             "usage_totals": totals,
             "estimated_cost_usd": round(cost_usd, 6),
-            "open_batches": len(checkpoint.get("open_batches", {})),
+            "open_batches": open_batches,
+            "max_open_batches": self.max_open_batches,
             "skipped_existing_requests": self.skipped_existing_requests,
             "campaign_name": self.campaign_name or "",
         }
@@ -309,17 +364,11 @@ class GenerationRunner:
         totals = {
             "input_tokens": 0.0,
             "output_tokens": 0.0,
-            "cache_creation_input_tokens": 0.0,
-            "cache_read_input_tokens": 0.0,
         }
         for row in _read_jsonl(usage_jsonl_path):
             usage = row.get("usage") if isinstance(row.get("usage"), dict) else {}
             totals["input_tokens"] += float(usage.get("input_tokens", 0) or 0)
             totals["output_tokens"] += float(usage.get("output_tokens", 0) or 0)
-            totals["cache_creation_input_tokens"] += float(
-                usage.get("cache_creation_input_tokens", 0) or 0
-            )
-            totals["cache_read_input_tokens"] += float(usage.get("cache_read_input_tokens", 0) or 0)
         return totals
 
     def _submit_pending_batches(
@@ -361,10 +410,8 @@ class GenerationRunner:
             batch_payload: List[Dict[str, Any]] = []
             for item in batch_items:
                 params = self.client.build_message_params(
-                    system_prompt=self.system_prompt,
+                    system_prompt=SYSTEM_PROMPT,
                     cue=str(item["cue"]),
-                    enable_prompt_caching=self.enable_prompt_caching,
-                    cache_control_type=self.cache_control_type,
                 )
                 batch_payload.append(
                     {
@@ -499,65 +546,78 @@ class GenerationRunner:
         raw_output_path: str,
         cues: List[str],
     ) -> Dict[str, Any]:
-        manifest = self._load_or_create_manifest(
-            run_dir=run_dir,
-            run_id=run_id,
-            config_path=config_path,
-            raw_output_path=raw_output_path,
-            cues=cues,
-        )
-        manifest["state"] = "running"
-        if self.campaign_name:
-            manifest["campaign_name"] = self.campaign_name
-        if self.campaign_paths:
-            manifest["campaign_root"] = self.campaign_paths.get("root_dir", "")
-        self._write_manifest(manifest)
-        if self.campaign_paths:
-            self.campaign_completed_ids = load_completed_ids(self.campaign_paths["index_path"])
-            request_index = _read_json(manifest["request_index_path"], {"requests": []}).get("requests", [])
-            self.skipped_existing_requests = sum(
-                1 for row in request_index if row.get("custom_id") in self.campaign_completed_ids
+        lock_handle = _acquire_run_lock(run_dir)
+        try:
+            manifest = self._load_or_create_manifest(
+                run_dir=run_dir,
+                run_id=run_id,
+                config_path=config_path,
+                raw_output_path=raw_output_path,
+                cues=cues,
             )
-        else:
-            self.campaign_completed_ids = set()
-            self.skipped_existing_requests = 0
+            manifest["state"] = "running"
+            if self.campaign_name:
+                manifest["campaign_name"] = self.campaign_name
+            if self.campaign_paths:
+                manifest["campaign_root"] = self.campaign_paths.get("root_dir", "")
+            self._write_manifest(manifest)
+            if self.campaign_paths:
+                self.campaign_completed_ids = load_completed_ids(self.campaign_paths["index_path"])
+                request_index = _read_json(manifest["request_index_path"], {"requests": []}).get("requests", [])
+                self.skipped_existing_requests = sum(
+                    1 for row in request_index if row.get("custom_id") in self.campaign_completed_ids
+                )
+            else:
+                self.campaign_completed_ids = set()
+                self.skipped_existing_requests = 0
 
-        started = time.time()
-        while True:
-            manifest = _read_json(manifest["run_dir"] + "/manifest.json", manifest)
-            checkpoint = _read_json(
-                manifest["checkpoint_path"],
-                {"open_batches": {}, "submitted_ids": [], "completed_ids": [], "failed_ids": []},
-            )
-            if manifest.get("state") == "paused":
+            started = time.time()
+            while True:
+                manifest = _read_json(manifest["run_dir"] + "/manifest.json", manifest)
+                checkpoint = _read_json(
+                    manifest["checkpoint_path"],
+                    {"open_batches": {}, "submitted_ids": [], "completed_ids": [], "failed_ids": []},
+                )
+                if manifest.get("state") == "paused":
+                    totals = self._load_usage_totals(manifest["usage_jsonl_path"])
+                    progress = self._write_progress(manifest, checkpoint, totals)
+                    return progress
+
+                while True:
+                    n_before = len(checkpoint.get("open_batches", {}))
+                    checkpoint = self._submit_pending_batches(manifest, checkpoint)
+                    if len(checkpoint.get("open_batches", {})) <= n_before:
+                        break
+                checkpoint = self._collect_finished_batches(manifest, checkpoint)
+                while True:
+                    n_before = len(checkpoint.get("open_batches", {}))
+                    checkpoint = self._submit_pending_batches(manifest, checkpoint)
+                    if len(checkpoint.get("open_batches", {})) <= n_before:
+                        break
                 totals = self._load_usage_totals(manifest["usage_jsonl_path"])
                 progress = self._write_progress(manifest, checkpoint, totals)
-                return progress
 
-            checkpoint = self._submit_pending_batches(manifest, checkpoint)
-            checkpoint = self._collect_finished_batches(manifest, checkpoint)
-            totals = self._load_usage_totals(manifest["usage_jsonl_path"])
-            progress = self._write_progress(manifest, checkpoint, totals)
+                if progress["remaining_requests"] <= 0 and progress["open_batches"] == 0:
+                    manifest["state"] = "completed"
+                    self._write_manifest(manifest)
+                    # In campaign mode, CSV is streamed continuously to avoid cross-run overwrite.
+                    if not self.campaign_name:
+                        self._export_rows_csv(manifest)
+                    progress = self._write_progress(manifest, checkpoint, totals)
+                    return progress
 
-            if progress["remaining_requests"] <= 0 and progress["open_batches"] == 0:
-                manifest["state"] = "completed"
-                self._write_manifest(manifest)
-                # In campaign mode, CSV is streamed continuously to avoid cross-run overwrite.
-                if not self.campaign_name:
-                    self._export_rows_csv(manifest)
-                progress = self._write_progress(manifest, checkpoint, totals)
-                return progress
+                if (time.time() - started) >= self.batch_timeout_sec:
+                    manifest["state"] = "timed_out"
+                    self._write_manifest(manifest)
+                    progress = self._write_progress(manifest, checkpoint, totals)
+                    return progress
 
-            if (time.time() - started) >= self.batch_timeout_sec:
-                manifest["state"] = "timed_out"
-                self._write_manifest(manifest)
-                progress = self._write_progress(manifest, checkpoint, totals)
-                return progress
-
-            time.sleep(self.batch_poll_interval_sec)
+                time.sleep(self.batch_poll_interval_sec)
+        finally:
+            _release_run_lock(lock_handle)
 
     @staticmethod
-    def pause_run(run_dir: str | Path, cancel_remote: bool = False, client: Optional[AnthropicTextClient] = None) -> None:
+    def pause_run(run_dir: str | Path, cancel_remote: bool = False, client: Optional[AnthropicTextClient | OpenAITextClient] = None) -> None:
         run_path = Path(run_dir)
         manifest_path = run_path / "manifest.json"
         manifest = _read_json(manifest_path, {})
@@ -580,9 +640,6 @@ class GenerationRunner:
         manifest = _read_json(run_path / "manifest.json", {})
         if not manifest:
             raise ValueError(f"Run manifest not found at {run_path / 'manifest.json'}")
-        progress = _read_json(manifest.get("progress_path", ""), {})
-        if progress:
-            return progress
         checkpoint = _read_json(
             manifest["checkpoint_path"],
             {"open_batches": {}, "submitted_ids": [], "completed_ids": [], "failed_ids": []},
@@ -592,7 +649,27 @@ class GenerationRunner:
         failed = len(checkpoint.get("failed_ids", []))
         submitted = len(checkpoint.get("submitted_ids", []))
         remaining = max(total - completed - failed, 0)
-        return {
+        open_batches = len(checkpoint.get("open_batches", {}))
+        progress = _read_json(manifest.get("progress_path", ""), {})
+        if progress:
+            progress["state"] = manifest.get("state", progress.get("state"))
+            progress["completed_requests"] = completed
+            progress["failed_requests"] = failed
+            progress["submitted_requests"] = submitted
+            progress["remaining_requests"] = remaining
+            progress["open_batches"] = open_batches
+            progress["percent_complete"] = round((completed / total * 100.0) if total else 0.0, 4)
+            if "max_open_batches" not in progress or progress.get("max_open_batches") <= 0:
+                try:
+                    root = run_path.parent.parent.parent  # data/runs/X -> project root
+                    cfg_path = root / manifest.get("config_path", "")
+                    if cfg_path.exists():
+                        cfg = load_config(str(cfg_path))
+                        progress["max_open_batches"] = cfg.generation.max_open_batches or 0
+                except Exception:
+                    pass
+            return progress
+        result = {
             "run_id": manifest.get("run_id"),
             "state": manifest.get("state"),
             "total_requests": total,
@@ -602,5 +679,14 @@ class GenerationRunner:
             "remaining_requests": remaining,
             "percent_complete": round((completed / total * 100.0) if total else 0.0, 4),
             "estimated_cost_usd": 0.0,
-            "open_batches": len(checkpoint.get("open_batches", {})),
+            "open_batches": open_batches,
         }
+        try:
+            root = run_path.parent.parent.parent
+            cfg_path = root / manifest.get("config_path", "")
+            if cfg_path.exists():
+                cfg = load_config(str(cfg_path))
+                result["max_open_batches"] = cfg.generation.max_open_batches or 0
+        except Exception:
+            pass
+        return result

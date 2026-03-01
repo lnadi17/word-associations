@@ -15,6 +15,8 @@ class PathsConfig:
     edge_list_output_path: str = "data/processed/claude_opus45_edges.csv"
     embedding_analysis_path: str = "data/analysis/embedding_correlation.csv"
     outliers_path: str = "data/analysis/outliers.csv"
+    spelling_dict_path: str = "lexicon/mapping_tables/EnglishCustomDict.txt"
+    dataset_name: str = ""  # e.g. gpt5_mini -> FA_gpt5_mini.csv output names
 
 
 @dataclass
@@ -32,6 +34,7 @@ class GenerationConfig:
     max_retries: int = 3  # retained for compatibility
     retry_backoff_sec: float = 1.5  # retained for compatibility
     request_timeout_sec: float = 60.0
+    api_provider: str = "anthropic"
     api_base_url: str = "https://api.anthropic.com"
     batch_request_limit: int = 200
     batch_poll_interval_sec: float = 5.0
@@ -41,12 +44,8 @@ class GenerationConfig:
     jitter_sec: float = 0.5
     run_root_dir: str = "data/runs"
     checkpoint_every_n_results: int = 50
-    enable_prompt_caching: bool = True
-    cache_control_type: str = "ephemeral"
     input_cost_per_mtok: float = 5.0
     output_cost_per_mtok: float = 25.0
-    cache_creation_input_cost_per_mtok: float = 6.25
-    cache_read_input_cost_per_mtok: float = 0.5
     campaign_name: str = ""
     campaign_root_dir: str = "data/campaigns"
     cue_start_index: int = 0
@@ -54,15 +53,7 @@ class GenerationConfig:
     master_seed: int = 42
     max_open_batches: int = 1
     submission_mode: str = "incremental"
-    prompt_template: str = (
-        "Task: "
-        "• You will be provided with an input word: write the first 3 words you associate to it separated by a comma"
-        "• No additional output text is allowed"
-        "Constraints:"
-        "• No carriage return characters are allowed in the answers"
-        "• Answers should be as short as possible"
-        "Example: Input: sea Output: water, beach, sun"
-    )
+    reasoning_effort: str = ""
 
 
 @dataclass

@@ -234,7 +234,7 @@ start_run_or_show_error() {
     return
   fi
 
-  clear
+  [ -t 1 ] && clear || true
   print_header
   printf "%sRunner failed to start.%s\n" "$CLR_RED" "$CLR_RESET"
   echo "Recent log:"
@@ -253,6 +253,17 @@ runner_alive() {
     return 1
   fi
   kill -0 "$RUNNER_PID" >/dev/null 2>&1
+}
+
+# When attaching, discover runner PID from .runner.lock holder (lsof)
+discover_runner_pid() {
+  [[ -n "${RUNNER_PID:-}" ]] && return 0
+  local lock_file="$ROOT_DIR/$RUN_DIR/.runner.lock"
+  [[ ! -f "$lock_file" ]] && return 0
+  local pid
+  pid="$(lsof "$lock_file" 2>/dev/null | awk 'NR>1 {print $2; exit}' 2>/dev/null)" || pid=""
+  [[ -n "$pid" ]] && [[ "$pid" =~ ^[0-9]+$ ]] && RUNNER_PID="$pid"
+  return 0
 }
 
 read_status_line() {
@@ -277,7 +288,7 @@ pause_run() {
 
 hard_cancel_run() {
   if [[ -z "${CONFIG_PATH:-}" ]] || [[ ! -f "$CONFIG_PATH" ]]; then
-    clear
+    [ -t 1 ] && clear || true
     print_header
     printf "%sHard cancel requires a valid config path.%s\n" "$CLR_RED" "$CLR_RESET"
     echo "Current CONFIG_PATH: ${CONFIG_PATH:-<unset>}"
@@ -292,7 +303,7 @@ hard_cancel_run() {
 }
 
 render_dashboard() {
-  clear
+  [ -t 1 ] && clear || true
   print_header
 
   local state completed total failed remaining open_batches skipped_existing cost
@@ -329,16 +340,22 @@ render_dashboard() {
 
   if runner_alive; then
     printf "%sRunner Process:%s %s%s%s (active)\n" "$CLR_BOLD" "$CLR_RESET" "$CLR_GREEN" "$RUNNER_PID" "$CLR_RESET"
+    if [[ "$state" == "paused" ]]; then
+      printf "%s  Hint: to resume, kill the runner first: kill %s%s\n" "$CLR_BOLD" "$CLR_RESET" "$RUNNER_PID"
+    fi
   else
     printf "%sRunner Process:%s %snot active%s\n" "$CLR_BOLD" "$CLR_RESET" "$CLR_YELLOW" "$CLR_RESET"
+    if [[ "$state" == "paused" ]]; then
+      printf "%s  Hint: press [r] to start a new runner and resume.%s\n" "$CLR_BOLD" "$CLR_RESET"
+    fi
   fi
 
   echo
-  printf "%sControls:%s [p]ause [x]hard-cancel [r]esume [f]ollow-status [l]og-tail [q]uit-monitor\n" "$CLR_BOLD" "$CLR_RESET"
+  printf "%sControls:%s [p]ause [x]hard-cancel [r]esume [k]ill-runner [f]ollow-status [l]og-tail [q]uit-monitor\n" "$CLR_BOLD" "$CLR_RESET"
 }
 
 show_log_tail() {
-  clear
+  [ -t 1 ] && clear || true
   print_header
   echo "Recent runner log:"
   echo "----------------------------------------"
@@ -352,7 +369,7 @@ show_log_tail() {
 }
 
 follow_status() {
-  clear
+  [ -t 1 ] && clear || true
   echo "Attaching to live status (Ctrl+C to return to dashboard)..."
   PYTHONPATH=. "$PYTHON_BIN" scripts/manage_generation.py status --run-dir "$RUN_DIR" --follow || true
   sleep 1
@@ -403,6 +420,7 @@ main() {
   fi
 
   while true; do
+    discover_runner_pid
     read_status_line
     render_dashboard
     if read -r -s -n 1 -t "$REFRESH_SEC" key; then
@@ -414,8 +432,28 @@ main() {
           hard_cancel_run
           ;;
         r|R)
-          if ! runner_alive; then
+          if runner_alive; then
+            [ -t 1 ] && clear || true
+            print_header
+            printf "%sRunner is already active (PID %s). Press [k] to kill it first, then [r] to resume fresh.%s\n" "$CLR_YELLOW" "$RUNNER_PID" "$CLR_RESET"
+            read -r -p "Press Enter to return..."
+          else
             start_run_or_show_error "resume"
+          fi
+          ;;
+        k|K)
+          if runner_alive; then
+            [ -t 1 ] && clear || true
+            print_header
+            printf "%sKill runner (PID %s)? [y/N]: " "$CLR_YELLOW" "$RUNNER_PID" "$CLR_RESET"
+            read -r -n 1 yn
+            echo
+            if [[ "$yn" =~ ^[Yy]$ ]]; then
+              kill "$RUNNER_PID" 2>/dev/null || true
+              RUNNER_PID=""
+              echo "Runner killed. Press [r] to resume."
+              read -r -p "Press Enter to return..."
+            fi
           fi
           ;;
         f|F)

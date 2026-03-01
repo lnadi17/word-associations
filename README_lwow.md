@@ -144,9 +144,9 @@ PYTHONPATH=. python3 scripts/manage_generation.py status --run-dir data/runs/<ru
 Notes:
 - `status --follow` continuously refreshes progress and cost until terminal state.
 - `--session-cost-limit-usd` only applies to that follow session and is never saved to manifest/checkpoints.
-- Prompt caching and batch discounts can stack; cache hits in batches are best-effort.
+- Batch processing uses Anthropic Message Batches for throughput and pricing efficiency.
 
-**Fixed system prompt (from config):**
+**Fixed system prompt (in implementation):**
 
 ```
 Task:
@@ -217,4 +217,4 @@ For ~12,000 cues × 100 repetitions = 1.2M requests (Anthropic pricing: $5/MTok 
 - Output: 6 tokens/request × 1.2M ≈ 7.2M tokens → **$180**
 - **Total: ~$700–800** (approximate)
 
-Batch processing or prompt caching can reduce this.
+Batch processing can reduce this.

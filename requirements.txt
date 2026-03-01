@@ -1,6 +1,9 @@
 anthropic
 gensim
+networkx
+nltk
 numpy
+pandas
 pyyaml
 requests
 scipy

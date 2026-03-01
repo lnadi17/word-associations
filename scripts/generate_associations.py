@@ -7,6 +7,7 @@ from lwow.config import load_config
 from lwow.io import read_cue_stats
 from lwow.sampling import sample_cues
 from lwow.clients.anthropic_client import AnthropicTextClient
+from lwow.clients.openai_client import OpenAITextClient
 from lwow.generation import GenerationRunner
 
 
@@ -26,19 +27,28 @@ def main() -> None:
     cues = read_cue_stats(config.paths.cue_stats_path)
     sampled = sample_cues(cues, config.sampling.num_cues, config.sampling.seed)
 
-    client = AnthropicTextClient(
-        model=config.generation.model,
-        max_tokens=config.generation.max_tokens,
-        temperature=config.generation.temperature,
-        request_timeout_sec=config.generation.request_timeout_sec,
-        max_rate_limit_retries=config.generation.max_rate_limit_retries,
-        max_backoff_sec=config.generation.max_backoff_sec,
-        jitter_sec=config.generation.jitter_sec,
-        api_base_url=config.generation.api_base_url,
+    g = config.generation
+    provider = g.api_provider.lower()
+    common = dict(
+        model=g.model,
+        max_tokens=g.max_tokens,
+        temperature=g.temperature,
+        request_timeout_sec=g.request_timeout_sec,
+        max_rate_limit_retries=g.max_rate_limit_retries,
+        max_backoff_sec=g.max_backoff_sec,
+        jitter_sec=g.jitter_sec,
     )
+    if provider == "openai":
+        base_url = g.api_base_url if g.api_base_url != "https://api.anthropic.com" else "https://api.openai.com"
+        client: AnthropicTextClient | OpenAITextClient = OpenAITextClient(
+            **common,
+            api_base_url=base_url,
+            reasoning_effort=g.reasoning_effort or None,
+        )
+    else:
+        client = AnthropicTextClient(**common, api_base_url=g.api_base_url)
     runner = GenerationRunner(
         client=client,
-        system_prompt=config.generation.prompt_template,
         repetitions_per_cue=config.generation.repetitions_per_cue,
         max_retries=config.generation.max_retries,
         retry_backoff_sec=config.generation.retry_backoff_sec,
@@ -46,13 +56,9 @@ def main() -> None:
         batch_poll_interval_sec=config.generation.batch_poll_interval_sec,
         batch_timeout_sec=config.generation.batch_timeout_sec,
         checkpoint_every_n_results=config.generation.checkpoint_every_n_results,
-        enable_prompt_caching=config.generation.enable_prompt_caching,
-        cache_control_type=config.generation.cache_control_type,
         pricing={
             "input_per_mtok": config.generation.input_cost_per_mtok,
             "output_per_mtok": config.generation.output_cost_per_mtok,
-            "cache_creation_input_per_mtok": config.generation.cache_creation_input_cost_per_mtok,
-            "cache_read_input_per_mtok": config.generation.cache_read_input_cost_per_mtok,
         },
     )
 
