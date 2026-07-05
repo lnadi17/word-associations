@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
+import random
+import time
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from gensim.models import KeyedVectors
@@ -34,6 +37,9 @@ class EmbeddingClient:
 
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
         provider = self.provider.lower()
+        if provider == "openai":
+            embeddings, _ = self._embed_openai(texts)
+            return embeddings
         if provider == "voyage":
             return self._embed_voyage(texts)
         if provider == "word2vec":
@@ -46,6 +52,76 @@ class EmbeddingClient:
                 "Set embeddings.provider to 'voyage' and provide VOYAGE_API_KEY."
             )
         raise ValueError(f"Unknown embeddings provider: {self.provider}")
+
+    def _embed_openai(
+        self,
+        texts: List[str],
+        *,
+        api_key: Optional[str] = None,
+        api_base_url: str = "https://api.openai.com",
+        max_retries: int = 8,
+        request_timeout_sec: float = 60.0,
+    ) -> Tuple[List[List[float]], Dict[str, Any]]:
+        key = api_key or os.getenv("OPENAI_API_KEY")
+        if not key:
+            raise ValueError("OPENAI_API_KEY is required for OpenAI embeddings.")
+
+        url = f"{api_base_url.rstrip('/')}/v1/embeddings"
+        headers = {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        }
+        payload: Dict[str, Any] = {
+            "input": texts,
+            "model": self.model,
+            "encoding_format": "float",
+        }
+
+        attempt = 0
+        while True:
+            try:
+                response = requests.post(
+                    url,
+                    headers=headers,
+                    data=json.dumps(payload),
+                    timeout=request_timeout_sec,
+                )
+            except requests.RequestException as exc:
+                if attempt >= max_retries:
+                    raise RuntimeError(
+                        f"OpenAI embeddings request failed after retries: {exc}"
+                    ) from exc
+                attempt += 1
+                time.sleep(min(30.0, 2**attempt) + random.uniform(0, 0.5))
+                continue
+
+            if response.status_code in (408, 409, 429, 500, 502, 503, 504):
+                if attempt >= max_retries:
+                    raise RuntimeError(
+                        f"OpenAI embeddings failed ({response.status_code}): {response.text}"
+                    )
+                attempt += 1
+                time.sleep(min(30.0, 2**attempt) + random.uniform(0, 0.5))
+                continue
+
+            if response.status_code >= 400:
+                raise RuntimeError(
+                    f"OpenAI embeddings failed ({response.status_code}): {response.text}"
+                )
+
+            data = response.json()
+            embeddings = [item["embedding"] for item in data.get("data", [])]
+            usage = data.get("usage") or {}
+            return embeddings, usage
+
+    def embed_texts_with_usage(
+        self, texts: List[str]
+    ) -> Tuple[List[List[float]], Optional[Dict[str, Any]]]:
+        """Embed texts and return (embeddings, usage_dict). Usage is populated for OpenAI."""
+        if self.provider.lower() == "openai":
+            embeddings, usage = self._embed_openai(texts)
+            return embeddings, usage
+        return self.embed_texts(texts), None
 
     def _embed_voyage(self, texts: List[str]) -> List[List[float]]:
         api_key = os.getenv("VOYAGE_API_KEY")

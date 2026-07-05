@@ -1,8 +1,8 @@
 paths:
   cue_stats_path: "lexicon/SWOW-EN18/cueStats.SWOW-EN.R123.20180827.csv"
   raw_output_path: "data/raw/gpt5_mini_responses.csv"
-  processed_output_path: "lexicon/LWOW_datasets/processed_datasets/FA_gpt5_mini.csv"
-  edge_list_output_path: "lexicon/LWOW_datasets/graphs/edge_lists/FA_gpt5_mini_edgelist.csv"
+  processed_output_path: "data/processed/gpt5_mini_processed.csv"
+  edge_list_output_path: "data/processed/gpt5_mini_edges.csv"
   embedding_analysis_path: "data/analysis/embedding_correlation.csv"
   outliers_path: "data/analysis/outliers.csv"
   spelling_dict_path: "lexicon/mapping_tables/EnglishCustomDict.txt"

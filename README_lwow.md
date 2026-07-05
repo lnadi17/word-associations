@@ -21,7 +21,8 @@ lwow/
     embeddings.py        # Local (gensim) or remote (Voyage) embeddings
 
 scripts/
-  generate_associations.py   # Step 1: call Claude
+  manage_generation.py      # Step 1: run/resume generation (CLI)
+  interactive.sh            # Interactive campaign + run monitor
   process_associations.py   # Step 2: normalize and build edges
   analyze_embeddings.py     # Step 3: correlate counts with distances
 
@@ -63,7 +64,7 @@ export VOYAGE_API_KEY="..."
 Run scripts from the project root with the `lwow` package on the path:
 
 ```bash
-PYTHONPATH=. python3 scripts/generate_associations.py --config configs/lwow_claude.yaml
+PYTHONPATH=. python3 scripts/manage_generation.py run --config configs/lwow_claude.yaml
 ```
 
 ## Configuration
@@ -97,9 +98,9 @@ Edit `configs/lwow_claude.yaml`. Key options:
 
 ### Step 1: Generate Raw Associations
 
-**Script:** `scripts/generate_associations.py`
+**Script:** `scripts/manage_generation.py`
 
-This script now acts as a compatibility wrapper over the batch-first run manager. For operational control (start/resume/pause/live status), use `scripts/manage_generation.py`.
+Use `manage_generation.py run --config CONFIG` to start or resume a run. For interactive workflow (campaign + run monitor), use `./scripts/interactive.sh`.
 
 1. Load cues from `cue_stats_path` (CSV with `cue` column); sample `num_cues` cues using `sampling.seed`.
 2. Build deterministic request IDs for each `(cue, trial)` pair.
@@ -200,7 +201,7 @@ Output: water, beach, sun
 
 ```bash
 # Step 1: Generate (requires ANTHROPIC_API_KEY)
-PYTHONPATH=. python3 scripts/generate_associations.py --config configs/lwow_claude.yaml
+PYTHONPATH=. python3 scripts/manage_generation.py run --config configs/lwow_claude.yaml
 
 # Step 2: Process
 PYTHONPATH=. python3 scripts/process_associations.py --config configs/lwow_claude.yaml

@@ -1,0 +1,11 @@
+paths:
+  cue_stats_path: "lexicon/SWOW-EN18/cueStats.SWOW-EN.R123.20180827.csv"
+  raw_output_path: "LAG/lag_results_Qwen2.5-7B.csv"
+  processed_output_path: "lexicon/LWOW_datasets/processed_datasets/FA_Qwen2_5_7B.csv"
+  edge_list_output_path: "lexicon/LWOW_datasets/graphs/edge_lists/FA_Qwen2_5_7B_edgelist.csv"
+  spelling_dict_path: "lexicon/mapping_tables/EnglishCustomDict.txt"
+  dataset_name: "Qwen2_5_7B"
+
+processing:
+  repetitions_per_cue: 100
+  seed: 42

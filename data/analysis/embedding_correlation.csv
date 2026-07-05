@@ -1,7 +1,3 @@
-metric,value
-pearson_r,-0.04337925463914871
-pearson_p,0.7254023442020483
-spearman_r,-0.08213856825177354
-spearman_p,0.5054744222249548
-missing_words,0
-missing_edges,0
+version https://git-lfs.github.com/spec/v1
+oid sha256:07a43d6ea1b00f040f57038dda76625107d29b240a294811138774a557366bd2
+size 174

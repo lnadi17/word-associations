@@ -1,5 +1,6 @@
 anthropic
 gensim
+tiktoken
 networkx
 nltk
 numpy

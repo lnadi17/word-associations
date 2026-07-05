@@ -1,6 +1,3 @@
-src,tgt,wt,distance
-sub,sandwich,5,0.8440442085266113
-yank,jerk,5,0.8323749452829361
-toot,sound,5,0.954271961003542
-aries,ram,5,0.9157007485628128
-aries,fire,5,1.0044298255816102
+version https://git-lfs.github.com/spec/v1
+oid sha256:bfbf75fd7070a9face621b32fca3fd7e6225f57e0f62d292d50c56ca49bd36af
+size 185

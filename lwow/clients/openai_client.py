@@ -215,8 +215,13 @@ class OpenAITextClient:
                 rows.append(obj)
         return rows
 
-    def get_batch_results(self, batch_id: str, allow_not_found: bool = False) -> Dict[str, Any]:
-        status = self.get_batch_status(batch_id, allow_not_found=allow_not_found)
+    def get_batch_results(
+        self,
+        batch_id: str,
+        allow_not_found: bool = False,
+        cached_status: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        status = cached_status if cached_status is not None else self.get_batch_status(batch_id, allow_not_found=allow_not_found)
         if status.get("_not_found"):
             return status
 

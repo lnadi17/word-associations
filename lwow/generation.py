@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import csv
+import concurrent.futures
+import sys
 import fcntl
 import hashlib
 import json
@@ -19,6 +21,9 @@ from lwow.config import load_config
 from lwow.io import ensure_parent_dir
 
 
+_COLLECT_RESULTS_BATCH_SIZE = 100
+_COLLECT_STATUS_WORKERS = 100
+_CSV_FLUSH_ROWS = 100
 _PUNCT_RE = re.compile(r"[\"'“”‘’`]")
 SYSTEM_PROMPT = """Task:
  - You will be provided with an input word: write the first 3 words you associate to it separated by a comma.
@@ -128,6 +133,19 @@ def _append_csv_row(path: str | Path, row: Dict[str, Any], fieldnames: List[str]
         if needs_header:
             writer.writeheader()
         writer.writerow(row)
+
+
+def _append_csv_rows(path: str | Path, rows: List[Dict[str, Any]], fieldnames: List[str]) -> None:
+    if not rows:
+        return
+    ensure_parent_dir(path)
+    target = Path(path)
+    needs_header = (not target.exists()) or target.stat().st_size == 0
+    with open(target, "a", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        if needs_header:
+            writer.writeheader()
+        writer.writerows(rows)
 
 
 def _read_jsonl(path: str | Path) -> List[Dict[str, Any]]:
@@ -347,19 +365,6 @@ class GenerationRunner:
                     }
                 )
 
-    def _append_to_output_csv(self, manifest: Dict[str, Any], row: Dict[str, Any]) -> None:
-        _append_csv_row(
-            manifest["raw_output_path"],
-            {
-                "cue": row.get("cue", ""),
-                "trial": row.get("trial", 0),
-                "raw_text": row.get("raw_text", ""),
-                "parsed": row.get("parsed", ""),
-                "ok": bool(row.get("ok", False)),
-            },
-            fieldnames=["cue", "trial", "raw_text", "parsed", "ok"],
-        )
-
     def _load_usage_totals(self, usage_jsonl_path: str) -> Dict[str, float]:
         totals = {
             "input_tokens": 0.0,
@@ -376,6 +381,8 @@ class GenerationRunner:
         manifest: Dict[str, Any],
         checkpoint: Dict[str, Any],
     ) -> Dict[str, Any]:
+        if manifest.get("reconcile_only"):
+            return checkpoint
         request_index = _read_json(manifest["request_index_path"], {"requests": []}).get("requests", [])
         submitted_ids = set(checkpoint.get("submitted_ids", []))
         completed_ids = set(checkpoint.get("completed_ids", []))
@@ -449,11 +456,35 @@ class GenerationRunner:
         completed_ids = set(checkpoint.get("completed_ids", []))
         failed_ids = set(checkpoint.get("failed_ids", []))
         processed_since_flush = 0
+        csv_fieldnames = ["cue", "trial", "raw_text", "parsed", "ok"]
+        csv_buffer: List[Dict[str, Any]] = []
+        batch_ids = list(open_batches.keys())
 
-        for batch_id in list(open_batches.keys()):
-            status = self.client.get_batch_status(batch_id, allow_not_found=True)
+        def _fetch_status(bid: str) -> Tuple[str, Dict[str, Any]]:
+            try:
+                return (bid, self.client.get_batch_status(bid, allow_not_found=True))
+            except Exception as exc:
+                return (bid, {"_error": str(exc)})
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=_COLLECT_STATUS_WORKERS) as ex:
+            statuses = list(ex.map(_fetch_status, batch_ids))
+
+        from collections import Counter
+        status_dist = Counter()
+        for _bid, st in statuses:
+            if st.get("_error"):
+                status_dist["_error"] += 1
+            elif st.get("_not_found"):
+                status_dist["_not_found"] += 1
+            else:
+                status_dist[str(st.get("status", "?"))] += 1
+        import sys
+        print(f"[collect] {len(batch_ids)} batches -> {dict(status_dist)}", file=sys.stderr)
+
+        for batch_id, status in statuses:
+            if status.get("_error"):
+                continue
             if status.get("_not_found"):
-                # Remote batch no longer exists; re-queue unfinished request IDs for resubmission.
                 batch_meta = open_batches.get(batch_id, {})
                 for request_id in batch_meta.get("request_ids", []):
                     if request_id not in completed_ids and request_id not in failed_ids:
@@ -462,80 +493,106 @@ class GenerationRunner:
                 checkpoint["open_batches"].pop(batch_id, None)
                 _atomic_write_json(manifest["checkpoint_path"], checkpoint)
                 continue
-
             processing_status = str(status.get("processing_status") or "")
             if processing_status and processing_status not in ("ended", "completed", "succeeded"):
                 continue
 
-            results_payload = self.client.get_batch_results(batch_id, allow_not_found=True)
-            if results_payload.get("_not_found"):
-                batch_meta = open_batches.get(batch_id, {})
-                for request_id in batch_meta.get("request_ids", []):
-                    if request_id not in completed_ids and request_id not in failed_ids:
-                        submitted_ids.discard(request_id)
-                checkpoint["submitted_ids"] = sorted(submitted_ids)
-                checkpoint["open_batches"].pop(batch_id, None)
-                _atomic_write_json(manifest["checkpoint_path"], checkpoint)
-                continue
-            results = results_payload.get("data") if isinstance(results_payload.get("data"), list) else []
-            for result_item in results:
-                if not isinstance(result_item, dict):
-                    continue
-                custom_id, usage, raw_text = _extract_result_data(result_item)
-                if not custom_id or custom_id in completed_ids or custom_id in failed_ids:
-                    continue
-                request_row = by_id.get(custom_id)
-                if not request_row:
-                    failed_ids.add(custom_id)
-                    continue
+        completed_with_status: List[Tuple[str, Dict[str, Any]]] = [
+            (bid, st) for bid, st in statuses
+            if not st.get("_error") and not st.get("_not_found")
+            and str(st.get("processing_status") or "") in ("ended", "completed", "succeeded")
+            and bid in checkpoint.get("open_batches", {})
+        ]
+        print(f"[collect] {len(completed_with_status)} ready to fetch", file=sys.stderr)
 
-                parsed = parse_associations(raw_text)
-                ok = len(parsed) == 3
-                row_record = {
-                    "custom_id": custom_id,
-                    "cue": request_row["cue"],
-                    "trial": request_row["trial"],
-                    "raw_text": raw_text,
-                    "parsed": "|".join(parsed),
-                    "ok": ok,
-                    "updated_at": _utc_now_iso(),
-                }
-                if self.campaign_paths:
-                    added = append_completed_entries(
-                        ledger_path=self.campaign_paths["ledger_path"],
-                        index_path=self.campaign_paths["index_path"],
-                        rows=[row_record],
-                    )
-                    if added <= 0:
-                        # Already recorded at campaign level; treat as completed for this run.
-                        completed_ids.add(custom_id)
-                        self.campaign_completed_ids.add(custom_id)
-                        continue
-                    self.campaign_completed_ids.add(custom_id)
+        def _fetch_results(item: Tuple[str, Dict[str, Any]]) -> Tuple[str, Dict[str, Any]]:
+            bid, st = item
+            payload = self.client.get_batch_results(bid, allow_not_found=True, cached_status=st)
+            return (bid, payload)
 
-                _append_jsonl(manifest["rows_jsonl_path"], row_record)
-                _append_jsonl(
-                    manifest["usage_jsonl_path"],
-                    {
-                        "custom_id": custom_id,
-                        "usage": usage,
-                        "updated_at": _utc_now_iso(),
-                    },
-                )
-                self._append_to_output_csv(manifest, row_record)
-                completed_ids.add(custom_id)
-                processed_since_flush += 1
-                if processed_since_flush >= self.checkpoint_every_n_results:
-                    checkpoint["completed_ids"] = sorted(completed_ids)
-                    checkpoint["failed_ids"] = sorted(failed_ids)
+        for chunk in _chunk(completed_with_status, _COLLECT_RESULTS_BATCH_SIZE):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(chunk)) as ex:
+                fetched = list(ex.map(_fetch_results, chunk))
+
+            for batch_id, results_payload in fetched:
+                if results_payload.get("_not_found"):
+                    batch_meta = open_batches.get(batch_id, {})
+                    for request_id in batch_meta.get("request_ids", []):
+                        if request_id not in completed_ids and request_id not in failed_ids:
+                            submitted_ids.discard(request_id)
+                    checkpoint["submitted_ids"] = sorted(submitted_ids)
+                    checkpoint["open_batches"].pop(batch_id, None)
                     _atomic_write_json(manifest["checkpoint_path"], checkpoint)
-                    processed_since_flush = 0
+                    continue
+                results = results_payload.get("data") if isinstance(results_payload.get("data"), list) else []
+                for result_item in results:
+                    if not isinstance(result_item, dict):
+                        continue
+                    custom_id, usage, raw_text = _extract_result_data(result_item)
+                    if not custom_id or custom_id in completed_ids or custom_id in failed_ids:
+                        continue
+                    request_row = by_id.get(custom_id)
+                    if not request_row:
+                        failed_ids.add(custom_id)
+                        continue
 
-            checkpoint["open_batches"].pop(batch_id, None)
-            checkpoint["submitted_ids"] = sorted(submitted_ids)
-            checkpoint["completed_ids"] = sorted(completed_ids)
-            checkpoint["failed_ids"] = sorted(failed_ids)
-            _atomic_write_json(manifest["checkpoint_path"], checkpoint)
+                    parsed = parse_associations(raw_text)
+                    ok = len(parsed) == 3
+                    row_record = {
+                        "custom_id": custom_id,
+                        "cue": request_row["cue"],
+                        "trial": request_row["trial"],
+                        "raw_text": raw_text,
+                        "parsed": "|".join(parsed),
+                        "ok": ok,
+                        "updated_at": _utc_now_iso(),
+                    }
+                    if self.campaign_paths:
+                        added = append_completed_entries(
+                            ledger_path=self.campaign_paths["ledger_path"],
+                            index_path=self.campaign_paths["index_path"],
+                            rows=[row_record],
+                        )
+                        if added <= 0:
+                            completed_ids.add(custom_id)
+                            self.campaign_completed_ids.add(custom_id)
+                            continue
+                        self.campaign_completed_ids.add(custom_id)
+
+                    _append_jsonl(manifest["rows_jsonl_path"], row_record)
+                    _append_jsonl(
+                        manifest["usage_jsonl_path"],
+                        {
+                            "custom_id": custom_id,
+                            "usage": usage,
+                            "updated_at": _utc_now_iso(),
+                        },
+                    )
+                    csv_buffer.append({
+                        "cue": row_record.get("cue", ""),
+                        "trial": row_record.get("trial", 0),
+                        "raw_text": row_record.get("raw_text", ""),
+                        "parsed": row_record.get("parsed", ""),
+                        "ok": bool(row_record.get("ok", False)),
+                    })
+                    if len(csv_buffer) >= _CSV_FLUSH_ROWS:
+                        _append_csv_rows(manifest["raw_output_path"], csv_buffer, csv_fieldnames)
+                        csv_buffer.clear()
+                    completed_ids.add(custom_id)
+                    processed_since_flush += 1
+                    if processed_since_flush >= self.checkpoint_every_n_results:
+                        checkpoint["completed_ids"] = sorted(completed_ids)
+                        checkpoint["failed_ids"] = sorted(failed_ids)
+                        _atomic_write_json(manifest["checkpoint_path"], checkpoint)
+                        processed_since_flush = 0
+
+                checkpoint["open_batches"].pop(batch_id, None)
+                checkpoint["submitted_ids"] = sorted(submitted_ids)
+                checkpoint["completed_ids"] = sorted(completed_ids)
+                checkpoint["failed_ids"] = sorted(failed_ids)
+                _atomic_write_json(manifest["checkpoint_path"], checkpoint)
+        if csv_buffer:
+            _append_csv_rows(manifest["raw_output_path"], csv_buffer, csv_fieldnames)
         return checkpoint
 
     def run_to_completion(

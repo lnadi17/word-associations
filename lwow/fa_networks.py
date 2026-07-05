@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import networkx as nx
 import pandas as pd
@@ -133,3 +133,51 @@ def build_filtered_graph(
     g = idiosyn_filter(g)
     g = largest_connected_component(g)
     return g
+
+
+def graph_summary(graphs: Dict[str, nx.Graph]) -> pd.DataFrame:
+    """Return summary table for graphs."""
+    rows = []
+    for name, g in graphs.items():
+        degrees = dict(nx.degree(g))
+        avg_degree = float(sum(degrees.values()) / len(degrees)) if degrees else 0.0
+        rows.append(
+            {
+                "Model": name,
+                "Nodes": g.number_of_nodes(),
+                "Edges": g.number_of_edges(),
+                "Density": nx.density(g) if g.number_of_nodes() > 1 else 0.0,
+                "Average degree": avg_degree,
+            }
+        )
+    return pd.DataFrame(rows).set_index("Model")
+
+
+def ordered_edges(edge_list: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
+    """Sort endpoint labels within each edge tuple."""
+    return [tuple(sorted((a, b))) for a, b in edge_list]
+
+
+def net_comparison(g_ref: nx.Graph, g_other: nx.Graph) -> Dict[str, float]:
+    """Compare node/edge overlap between two graphs (Jaccard-style metrics)."""
+    n_ref = set(g_ref.nodes())
+    n_other = set(g_other.nodes())
+    n_inter = n_ref.intersection(n_other)
+    n_union = n_ref.union(n_other)
+
+    sg_ref = g_ref.subgraph(n_inter)
+    sg_other = g_other.subgraph(n_inter)
+
+    e_ref = set(ordered_edges(list(sg_ref.edges())))
+    e_other = set(ordered_edges(list(sg_other.edges())))
+    e_inter = e_ref.intersection(e_other)
+    e_union = e_ref.union(e_other)
+
+    return {
+        "(A-B)/A Nodes": (len(n_ref - n_other) / len(n_ref)) if n_ref else 0.0,
+        "Jaccard Nodes": (len(n_inter) / len(n_union)) if n_union else 0.0,
+        "(B-A)/B Nodes": (len(n_other - n_ref) / len(n_other)) if n_other else 0.0,
+        "(A-B)/A Edges": (len(e_ref - e_other) / len(e_ref)) if e_ref else 0.0,
+        "Jaccard Edges": (len(e_inter) / len(e_union)) if e_union else 0.0,
+        "(B-A)/B Edges": (len(e_other - e_ref) / len(e_other)) if e_other else 0.0,
+    }

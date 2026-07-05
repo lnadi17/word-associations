@@ -38,7 +38,7 @@ generation:
   cue_start_index: 0
   cue_count: 0
   master_seed: 42
-  max_open_batches: 100
+  max_open_batches: 1000
   submission_mode: "incremental"
 
 processing:

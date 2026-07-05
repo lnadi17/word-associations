@@ -154,7 +154,12 @@ class AnthropicTextClient:
             allow_404=allow_not_found,
         )
 
-    def get_batch_results(self, batch_id: str, allow_not_found: bool = False) -> Dict[str, Any]:
+    def get_batch_results(
+        self,
+        batch_id: str,
+        allow_not_found: bool = False,
+        cached_status: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         return self._request_with_retries(
             "GET",
             f"/v1/messages/batches/{batch_id}/results",

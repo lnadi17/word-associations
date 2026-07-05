@@ -280,15 +280,28 @@ def cue100(
 
 
 def raw_rows_to_dataframe(rows: List[Dict[str, Any]]) -> pd.DataFrame:
-    """Convert raw API rows (cue,trial,parsed) to DataFrame with cue,R1,R2,R3."""
+    """Convert raw API rows to DataFrame with cue,R1,R2,R3.
+
+    Supports: (1) cue,parsed with pipe-separated tokens; (2) cue,r1,r2,r3
+    or cue,response_1,response_2,response_3 (LAG format).
+    """
     records: List[Dict[str, str]] = []
     for row in rows:
         cue = str(row.get("cue", "")).strip()
-        parsed = row.get("parsed", "")
-        tokens = [t.strip() for t in str(parsed).split("|") if t.strip()]
-        r1 = tokens[0] if len(tokens) > 0 else ""
-        r2 = tokens[1] if len(tokens) > 1 else ""
-        r3 = tokens[2] if len(tokens) > 2 else ""
+        # LAG format: r1,r2,r3 or response_1,response_2,response_3
+        r1 = row.get("r1") or row.get("response_1")
+        r2 = row.get("r2") or row.get("response_2")
+        r3 = row.get("r3") or row.get("response_3")
+        if r1 is not None or r2 is not None or r3 is not None:
+            r1 = str(r1).strip() if r1 is not None and str(r1).lower() != "nan" else ""
+            r2 = str(r2).strip() if r2 is not None and str(r2).lower() != "nan" else ""
+            r3 = str(r3).strip() if r3 is not None and str(r3).lower() != "nan" else ""
+        else:
+            parsed = row.get("parsed", "")
+            tokens = [t.strip() for t in str(parsed).split("|") if t.strip()]
+            r1 = tokens[0] if len(tokens) > 0 else ""
+            r2 = tokens[1] if len(tokens) > 1 else ""
+            r3 = tokens[2] if len(tokens) > 2 else ""
         records.append({"cue": cue, "R1": r1, "R2": r2, "R3": r3})
     return pd.DataFrame(records)
 

@@ -1,0 +1,8 @@
+{
+  "model": "text-embedding-3-small",
+  "prompt_tokens": 71076,
+  "total_spend_usd": 0.0053307,
+  "created_at": "2026-03-01T18:51:20.202872+00:00",
+  "source_csv": "data/processed/gpt5_mini_edges.csv",
+  "updated_at": "2026-03-01T19:12:46.022964+00:00"
+}

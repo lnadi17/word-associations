@@ -2,22 +2,17 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
-from lwow.campaign import init_or_load_campaign, load_completed_ids, select_cue_window
+from lwow.campaign import init_or_load_campaign, select_cue_window
 from lwow.clients.anthropic_client import AnthropicTextClient
 from lwow.clients.openai_client import OpenAITextClient
 from lwow.config import RunConfig, load_config
 from lwow.generation import GenerationRunner
 from lwow.io import read_cue_stats
 from lwow.sampling import sample_cues
-
-
-TERMINAL_STATES = {"completed", "paused", "timed_out", "failed"}
 
 
 def _now_run_id() -> str:
@@ -67,14 +62,8 @@ def _build_runner(config: RunConfig, client: AnthropicTextClient | OpenAITextCli
     )
 
 
-def _resolve_run_dir(config: RunConfig, run_id: str | None, run_dir: str | None) -> Path:
-    if run_dir:
-        return Path(run_dir)
-    resolved_run_id = run_id or _now_run_id()
-    return Path(config.generation.run_root_dir) / resolved_run_id
-
-
-def _apply_generation_overrides(config: RunConfig, args: argparse.Namespace) -> None:
+def _apply_run_overrides(config: RunConfig, args: argparse.Namespace) -> None:
+    """Apply optional CLI overrides. Used by interactive script for prompted values."""
     g = config.generation
     if getattr(args, "campaign_name", None):
         g.campaign_name = args.campaign_name
@@ -82,10 +71,14 @@ def _apply_generation_overrides(config: RunConfig, args: argparse.Namespace) -> 
         g.cue_start_index = args.cue_start_index
     if getattr(args, "cue_count", None) is not None:
         g.cue_count = args.cue_count
-    if getattr(args, "master_seed", None) is not None:
-        g.master_seed = args.master_seed
     if getattr(args, "max_open_batches", None) is not None:
         g.max_open_batches = args.max_open_batches
+
+
+def _resolve_run_dir(config: RunConfig, run_dir: str | None) -> Path:
+    if run_dir:
+        return Path(run_dir)
+    return Path(config.generation.run_root_dir) / _now_run_id()
 
 
 def _resolve_sampled_cues(config: RunConfig) -> tuple[list[str], Dict[str, str] | None]:
@@ -109,11 +102,11 @@ def _resolve_sampled_cues(config: RunConfig) -> tuple[list[str], Dict[str, str] 
     return sampled, None
 
 
-def _print_status(progress: Dict[str, Any], live: bool = False) -> None:
+def _print_status(progress: Dict[str, Any]) -> None:
     ob = progress.get("open_batches", 0)
     max_ob = progress.get("max_open_batches", 0)
     ob_str = f"{ob}/{max_ob}" if max_ob > 0 else str(ob)
-    message = (
+    print(
         f"state={progress.get('state')} "
         f"completed={progress.get('completed_requests', 0)}/{progress.get('total_requests', 0)} "
         f"failed={progress.get('failed_requests', 0)} "
@@ -122,45 +115,28 @@ def _print_status(progress: Dict[str, Any], live: bool = False) -> None:
         f"skipped_existing={progress.get('skipped_existing_requests', 0)} "
         f"cost_usd={progress.get('estimated_cost_usd', 0.0)}"
     )
-    if live:
-        print("\r" + message.ljust(120), end="", flush=True)
+
+
+def cmd_run(args: argparse.Namespace) -> None:
+    config = load_config(args.config)
+    _apply_run_overrides(config, args)
+    run_dir = _resolve_run_dir(config, args.run_dir)
+    is_resume = (run_dir / "manifest.json").exists()
+    if is_resume:
+        run_dir = run_dir  # Must exist
+        if getattr(args, "reconcile_only", False):
+            manifest_path = run_dir / "manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["reconcile_only"] = True
+            manifest_path.write_text(json.dumps(manifest, indent=2))
     else:
-        print(message)
-
-
-def cmd_start(args: argparse.Namespace) -> None:
-    config = load_config(args.config)
-    _apply_generation_overrides(config, args)
-    run_dir = _resolve_run_dir(config, args.run_id, args.run_dir)
-    run_dir.mkdir(parents=True, exist_ok=True)
+        run_dir.mkdir(parents=True, exist_ok=True)
 
     sampled, campaign_paths = _resolve_sampled_cues(config)
     client = _build_client(config)
     runner = _build_runner(config, client)
     runner.campaign_paths = campaign_paths
 
-    run_id = run_dir.name
-    progress = runner.run_to_completion(
-        run_dir=run_dir,
-        run_id=run_id,
-        config_path=args.config,
-        raw_output_path=config.paths.raw_output_path,
-        cues=sampled,
-    )
-    print(json.dumps({"run_dir": str(run_dir), "progress": progress}, indent=2))
-
-
-def cmd_resume(args: argparse.Namespace) -> None:
-    config = load_config(args.config)
-    _apply_generation_overrides(config, args)
-    run_dir = _resolve_run_dir(config, args.run_id, args.run_dir)
-    if not (run_dir / "manifest.json").exists():
-        raise ValueError(f"Cannot resume. No manifest found in {run_dir}")
-
-    sampled, campaign_paths = _resolve_sampled_cues(config)
-    client = _build_client(config)
-    runner = _build_runner(config, client)
-    runner.campaign_paths = campaign_paths
     progress = runner.run_to_completion(
         run_dir=run_dir,
         run_id=run_dir.name,
@@ -183,156 +159,128 @@ def cmd_campaign_status(args: argparse.Namespace) -> None:
         all_cues=all_cues,
         master_seed=config.generation.master_seed,
     )
-    completed_ids = load_completed_ids(campaign_paths["index_path"])
-    master_cues = select_cue_window(
-        master_cues_path=campaign_paths["master_cues_path"],
-        cue_start_index=0,
-        cue_count=10_000_000,
-    )
+    with open(campaign_paths["master_cues_path"], "r", encoding="utf-8") as f:
+        master_cues = json.load(f)
+    with open(campaign_paths["index_path"], "r", encoding="utf-8") as f:
+        idx = json.load(f)
+    completed_by_cue = idx.get("completed_count_by_cue", {})
+    reps = config.generation.repetitions_per_cue
+    next_start = 0
+    for cue in master_cues:
+        if int(completed_by_cue.get(cue, 0)) >= reps:
+            next_start += 1
+        else:
+            break
+    completed_any = sum(1 for c in master_cues if int(completed_by_cue.get(c, 0)) > 0)
+    completed_full = sum(1 for c in master_cues if int(completed_by_cue.get(c, 0)) >= reps)
     print(
         json.dumps(
             {
                 "campaign_name": campaign_name,
                 "campaign_root": campaign_paths["root_dir"],
                 "master_cues_total": len(master_cues),
-                "completed_request_ids": len(completed_ids),
+                "completed_request_ids": int(idx.get("total_completed", 0)),
+                "completed_cues_any": completed_any,
+                "completed_cues_full": completed_full,
+                "next_start_index": next_start,
+                "default_window_count": config.sampling.num_cues,
+                "max_open_batches_default": config.generation.max_open_batches,
             },
             indent=2,
         )
     )
 
 
-def cmd_release_stale_lock(args: argparse.Namespace) -> None:
-    """Remove .runner.lock when the owner process is dead. Use after a crashed runner."""
-    run_dir = Path(args.run_dir)
-    lock_path = run_dir / ".runner.lock"
-    if not lock_path.exists():
-        print(json.dumps({"run_dir": str(run_dir), "released": False, "reason": "no_lock_file"}, indent=2))
-        return
-    try:
-        owner_pid = lock_path.read_text(encoding="utf-8").strip()
-        if owner_pid and owner_pid.isdigit():
-            pid = int(owner_pid)
-            try:
-                os.kill(pid, 0)  # Check if process exists (no signal sent)
-                print(
-                    json.dumps(
-                        {
-                            "run_dir": str(run_dir),
-                            "released": False,
-                            "reason": "process_alive",
-                            "owner_pid": pid,
-                            "hint": f"Process {pid} is still running. To stop it: kill {pid}",
-                        },
-                        indent=2,
-                    )
-                )
-                return
-            except ProcessLookupError:
-                pass  # Process is dead
-    except (OSError, ValueError):
-        pass
-    lock_path.unlink()
-    print(json.dumps({"run_dir": str(run_dir), "released": True}, indent=2))
-
-
 def cmd_pause(args: argparse.Namespace) -> None:
     run_dir = Path(args.run_dir)
-    client = None
-    if args.cancel_remote:
-        if not args.config:
-            raise ValueError("--config is required when using --cancel-remote")
-        config = load_config(args.config)
-        client = _build_client(config)
-    GenerationRunner.pause_run(run_dir=run_dir, cancel_remote=args.cancel_remote, client=client)
+    config = load_config(args.config)
+    client = _build_client(config)
+    GenerationRunner.pause_run(run_dir=run_dir, cancel_remote=True, client=client)
     print(json.dumps({"run_dir": str(run_dir), "state": "paused"}, indent=2))
 
 
 def cmd_status(args: argparse.Namespace) -> None:
     run_dir = Path(args.run_dir)
-    if args.session_cost_limit_usd is not None and not args.follow:
-        raise ValueError("--session-cost-limit-usd can only be used with --follow")
+    progress = GenerationRunner.load_progress(run_dir)
+    _print_status(progress)
 
-    while True:
-        progress = GenerationRunner.load_progress(run_dir)
-        _print_status(progress, live=args.follow and not args.as_json)
-        if args.as_json and not args.follow:
-            print(json.dumps(progress, indent=2))
-        if args.follow:
-            if args.as_json:
-                print(json.dumps(progress))
-            # Session-scoped guard: never persisted.
-            if (
-                args.session_cost_limit_usd is not None
-                and progress.get("state") == "running"
-                and float(progress.get("estimated_cost_usd", 0.0)) >= args.session_cost_limit_usd
-            ):
-                GenerationRunner.pause_run(run_dir=run_dir, cancel_remote=False, client=None)
-                if not args.as_json:
-                    print("\npaused: session_cost_limit_reached")
-                break
-            if progress.get("state") in TERMINAL_STATES:
-                if not args.as_json:
-                    print()
-                break
-            time.sleep(args.refresh_sec)
+
+def infer_campaign_from_config(config_path: str) -> str:
+    """Infer campaign name from config: paths.dataset_name, or generation.campaign_name, or filename stem."""
+    config = load_config(config_path)
+    if config.paths.dataset_name:
+        return config.paths.dataset_name
+    if config.generation.campaign_name:
+        return config.generation.campaign_name
+    stem = Path(config_path).stem
+    if stem.startswith("lwow_"):
+        return stem[5:]  # lwow_gpt5_mini -> gpt5_mini
+    return stem or "default"
+
+
+def cmd_infer_campaign(args: argparse.Namespace) -> None:
+    print(infer_campaign_from_config(args.config))
+
+
+def cmd_list_runs(args: argparse.Namespace) -> None:
+    """List run dirs, optionally filtered by config. One path per line."""
+    runs_root = Path(args.runs_root)
+    config_filter = args.config
+    cfg_resolved = str(Path(config_filter).resolve()) if config_filter else None
+    for run_dir in sorted(runs_root.iterdir(), key=lambda p: p.name, reverse=True):
+        if not run_dir.is_dir():
             continue
-        break
+        manifest_path = run_dir / "manifest.json"
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text())
+            manifest_config = manifest.get("config_path", "")
+            if cfg_resolved and manifest_config:
+                man_resolved = str(Path(manifest_config).resolve())
+                if cfg_resolved != man_resolved:
+                    continue
+        except (json.JSONDecodeError, OSError):
+            continue
+        print(run_dir)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Manage LWOW Claude generation runs.")
+    parser = argparse.ArgumentParser(description="Manage LWOW generation runs.")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_start = sub.add_parser("start", help="Start a new generation run.")
-    p_start.add_argument("--config", required=True, help="Path to YAML config.")
-    p_start.add_argument("--run-id", default=None, help="Optional run ID.")
-    p_start.add_argument("--run-dir", default=None, help="Optional run directory override.")
-    p_start.add_argument("--campaign-name", default=None, help="Campaign name for cross-run dedup.")
-    p_start.add_argument("--cue-start-index", type=int, default=None, help="Cue window start index.")
-    p_start.add_argument("--cue-count", type=int, default=None, help="Cue window size override.")
-    p_start.add_argument("--master-seed", type=int, default=None, help="Master cue ordering seed.")
-    p_start.add_argument("--max-open-batches", type=int, default=None, help="Limit concurrent open batches.")
-    p_start.set_defaults(func=cmd_start)
+    p_run = sub.add_parser("run", help="Start or resume a generation run.")
+    p_run.add_argument("--config", required=True, help="Path to YAML config.")
+    p_run.add_argument("--run-dir", default=None, help="Run directory. If present and has manifest, resume. Else create new.")
+    p_run.add_argument("--campaign-name", default=None, help="Campaign name (overrides config).")
+    p_run.add_argument("--cue-start-index", type=int, default=None, help="Cue window start (overrides config).")
+    p_run.add_argument("--cue-count", type=int, default=None, help="Cue window size (overrides config).")
+    p_run.add_argument("--max-open-batches", type=int, default=None, help="Max open batches (overrides config).")
+    p_run.add_argument("--reconcile-only", action="store_true", help="Only collect open batches, do not submit new ones.")
+    p_run.set_defaults(func=cmd_run)
 
-    p_resume = sub.add_parser("resume", help="Resume an existing run.")
-    p_resume.add_argument("--config", required=True, help="Path to YAML config.")
-    p_resume.add_argument("--run-id", default=None, help="Run ID under configured run root.")
-    p_resume.add_argument("--run-dir", default=None, help="Run directory override.")
-    p_resume.add_argument("--campaign-name", default=None, help="Campaign name for cross-run dedup.")
-    p_resume.add_argument("--cue-start-index", type=int, default=None, help="Cue window start index.")
-    p_resume.add_argument("--cue-count", type=int, default=None, help="Cue window size override.")
-    p_resume.add_argument("--master-seed", type=int, default=None, help="Master cue ordering seed.")
-    p_resume.add_argument("--max-open-batches", type=int, default=None, help="Limit concurrent open batches.")
-    p_resume.set_defaults(func=cmd_resume)
-
-    p_release = sub.add_parser("release-stale-lock", help="Remove lock when owner process is dead.")
-    p_release.add_argument("--run-dir", required=True, help="Run directory.")
-    p_release.set_defaults(func=cmd_release_stale_lock)
-
-    p_pause = sub.add_parser("pause", help="Pause an existing run.")
+    p_pause = sub.add_parser("pause", help="Pause an existing run (cancels open remote batches).")
     p_pause.add_argument("--run-dir", required=True, help="Run directory.")
-    p_pause.add_argument("--cancel-remote", action="store_true", help="Also cancel open remote batches.")
-    p_pause.add_argument("--config", default=None, help="Config path (required for --cancel-remote).")
+    p_pause.add_argument("--config", required=True, help="Config path (needed to cancel remote batches).")
     p_pause.set_defaults(func=cmd_pause)
 
     p_status = sub.add_parser("status", help="Inspect run status.")
     p_status.add_argument("--run-dir", required=True, help="Run directory.")
-    p_status.add_argument("--follow", action="store_true", help="Live status mode.")
-    p_status.add_argument("--refresh-sec", type=float, default=2.0, help="Refresh interval for --follow.")
-    p_status.add_argument(
-        "--session-cost-limit-usd",
-        type=float,
-        default=None,
-        help="Session-only cost cap in follow mode. Pauses when exceeded.",
-    )
-    p_status.add_argument("--as-json", action="store_true", help="Print JSON status.")
     p_status.set_defaults(func=cmd_status)
 
     p_campaign = sub.add_parser("campaign-status", help="Inspect campaign-level dedup state.")
     p_campaign.add_argument("--config", required=True, help="Path to YAML config.")
     p_campaign.add_argument("--campaign-name", default=None, help="Campaign name override.")
     p_campaign.set_defaults(func=cmd_campaign_status)
+
+    p_infer = sub.add_parser("infer-campaign", help="Print campaign name inferred from config.")
+    p_infer.add_argument("--config", required=True, help="Path to YAML config.")
+    p_infer.set_defaults(func=cmd_infer_campaign)
+
+    p_list = sub.add_parser("list-runs", help="List run dirs, optionally filtered by config.")
+    p_list.add_argument("--runs-root", default="data/runs", help="Runs directory.")
+    p_list.add_argument("--config", default=None, help="Only runs that used this config.")
+    p_list.set_defaults(func=cmd_list_runs)
     return parser
 
 
