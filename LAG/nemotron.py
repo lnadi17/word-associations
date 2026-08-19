@@ -11,9 +11,8 @@ import re
 MODEL_PATH = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 INPUT_FILE = "master_cues.json"
 OUTPUT_FILE = "nemotron_results.csv"
-NUM_SAMPLES = 1  # Samples per Cue
-BATCH_SIZE = 8     # Reduced to prevent OOM with a 30B model
-TOKENS = 30        # Answer is just "word,word,word" — thinking is disabled, no need for 250
+NUM_SAMPLES = 100  # Samples per Cue
+BATCH_SIZE = 8         
 TEMP = 1           # Temperature
 
 # --- 1. Dataset Class for Batching ---
@@ -140,17 +139,7 @@ def run_hpc_batch_probe():
     for task, output in tqdm(zip(tasks, generator), total=len(tasks)):
         raw_response = output[0]['generated_text'].strip()
 
-        # --- Simplified Cleaning ---
-        clean_text = re.sub(r'[<>\n\-\*1234567890\.]', ' ', raw_response)
-
-        ignore_words = {
-            'and', 'the', 'a', 'an', 'is', 'format', 'word', 'of',
-            'associations', 'okay', 'user', 'sure', 'let\'s', 'wants',
-            'three', 'provide', 'result'
-        }
-
-        parts = [p.strip().lower() for p in clean_text.replace(',', ' ').split() if
-                 p.strip().lower() not in ignore_words]
+        parts = [p.strip() for p in raw_response.split(',') if p.strip()]
 
         r1 = parts[0] if len(parts) > 0 else "NaN"
         r2 = parts[1] if len(parts) > 1 else "NaN"
@@ -161,13 +150,13 @@ def run_hpc_batch_probe():
         # Write to disk every time we finish a full batch
         if len(batch_results) >= BATCH_SIZE:
             df_write = pd.DataFrame(batch_results)
-            df_write.to_csv(OUTPUT_FILE, mode='a', header=False, index=False)
+            df_write.to_csv(OUTPUT_FILE, mode='a', header=False, index=False, escapechar='\\')
             batch_results = []
 
     # Final write for any remaining results in the buffer
     if batch_results:
         df_write = pd.DataFrame(batch_results)
-        df_write.to_csv(OUTPUT_FILE, mode='a', header=False, index=False)
+        df_write.to_csv(OUTPUT_FILE, mode='a', header=False, index=False, escapechar='\\')
 
     print(f"--- Probing Complete! Results safely stored in {OUTPUT_FILE} ---")
 
