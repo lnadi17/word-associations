@@ -23,7 +23,7 @@ implicit biases in LLMs compared to humans](https://arxiv.org/pdf/2510.24488)
 - [ ] Add more datasets
     - [ ] Kimi v2.6 — Luka Nadiradze
     - [ ] GLM-5.2 — Luka Nadiradze
-    - [ ] Nemotron 3 Nano 30B A3B — Luka Tabagari
+    - [x] Nemotron 3 Nano 30B A3B — Luka Tabagari
     - [ ] Qwen 3.5/3.6 — Luka Tabagari
     - [ ] MiniMax M2.7 — Temo Saghinadze
     - [ ] Deepseek —
