@@ -1,5 +1,7 @@
 import argparse
 import logging
+import os
+import json
 from datetime import datetime
 
 import questionary 
@@ -13,16 +15,15 @@ import helper.configs as configs
 
 MAX_TOKENS = 256
 SAMPLES_PER_CUE = 100
+START_TIME = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 def get_model_name(model):
     return model.split("/")[-1]
 
 
-def setup_logger(model):
-    model = get_model_name(model)
-    START_TIME = datetime.now().strftime("%Y%m%d_%H%M%S")
+def setup_logger(location):
     logging.basicConfig(
-        filename=f"./logs/{model}_{START_TIME}.log",
+        filename=f"{location}/vllm.log",
         filemode="w",
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         level=logging.INFO,
@@ -30,6 +31,17 @@ def setup_logger(model):
 
 
 def main(dataloader, model, model_config, sampler_config):
+    model_name = get_model_name(model)
+
+    output_dir = f"./outputs/{model_name}_{START_TIME}"
+    log_output_dir = f"{output_dir}/logs"
+    llm_output_dir = f"{output_dir}/outputs"
+
+    for d in [output_dir, log_output_dir, llm_output_dir]:
+        os.mkdir(d)
+
+    setup_logger(log_output_dir)
+
     llm = LLM(model=model, **model_config)
 
     sampling_params = SamplingParams(
@@ -39,7 +51,7 @@ def main(dataloader, model, model_config, sampler_config):
     )
 
     tokenizer = llm.get_tokenizer()
-    model_name = get_model_name(model)
+
     for (batch_idx, batch) in enumerate(dataloader):
         conversations = prepare_conversation(batch)
 
@@ -62,7 +74,7 @@ def main(dataloader, model, model_config, sampler_config):
                     "finish_reason": completion.finish_reason,
                     })
         df = pd.DataFrame(rows)
-        df.to_csv(f"./outputs/results/{model_name}_{batch_idx}.csv", index=False)
+        df.to_csv(f"./{llm_output_dir}/{batch_idx}.csv", index=False)
 
     return 0
 
@@ -71,6 +83,7 @@ if "__main__" == __name__:
     parser.add_argument("--cues", type=str, required=True)
     parser.add_argument("--model_type", type=str, default="")
     parser.add_argument("--hf_repo", type=str, default="")
+    parser.add_argument("--num_gpus", type=int, default=2)
 
     args = parser.parse_args()
 
@@ -93,14 +106,13 @@ if "__main__" == __name__:
         print("USING DEFAULT CONFIG: USE ONLY FOR DEBUG!")
         model_config = configs.model_default
         sampler_config = configs.sampler_default
-    dataloader = generate_dataloader(args.cues)
+    dataloader = generate_dataloader(args.cues, batch_size=256)
+    if (args.num_gpus == 1):
+        if "pipeline_parallel_size" in model_config.keys():
+            print("WARNING USING ONLY ONE GPU")
+            model_config["pipeline_parallel_size" ] = 1
 
-    setup_logger(model)
     start_time = datetime.now()
     outputs = main(dataloader, model, model_config, sampler_config)
     elapsed_time = datetime.now() - start_time
     logging.info(f"\n====\nELAPSED TIME: {elapsed_time}")
-
-
-    
-
