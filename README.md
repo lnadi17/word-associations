@@ -23,11 +23,25 @@ implicit biases in LLMs compared to humans](https://arxiv.org/pdf/2510.24488)
 - [ ] Add more datasets
     - [ ] Kimi v2.6 — Luka Nadiradze
     - [ ] GLM-5.2 — Luka Nadiradze
-    - [x] Nemotron 3 Nano 30B A3B — Luka Tabagari
-    - [ ] Qwen 3.5/3.6 — Luka Tabagari
+    - [ ] Nemotron-3
+            - [x] `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16` (vllm tested)
+            - [x] `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` (hf generated, vllm tested)
+    - [x] Nemotron-3.5
+            - [x] `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16` (vllm tested)
+    - [ ] Qwen 3.5/3.6/3.8 — Luka Tabagari
+            - [ ] `Qwen/Qwen3.8-27B`
+            - [ ] `Qwen/Qwen3.8-27B-FP8`
     - [ ] MiniMax M2.7 — Temo Saghinadze
-    - [ ] Deepseek —
-    - [ ] Gemma 4 — 
+    - [ ] Deepseek 
+            - Officially published small models are in (DeepSeek-R1)[https://huggingface.co/collections/deepseek-ai/deepseek-r1]
+            - Need to check others though
+    - [ ] Gemma 4
+            - [x] `google/gemma-4-E2B-it` (vllm generated / works only with 1 gpu)
+            - [x] `google/gemma-4-E4B-it` (vllm generated / works only with 1 gpu)
+            - [x] `google/gemma-4-12B-it` (vllm generated)
+            - [x] `google/gemma-4-26B-A4B-it` (vllm generated)
+            - [ ] `google/gemma-4-31B-it`
+    
 - Come up with the new similarity metric (subgraph permutations?)
 
 

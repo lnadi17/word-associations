@@ -7,6 +7,7 @@ from datetime import datetime
 import questionary 
 import pandas as pd
 
+import torch
 from vllm import LLM, SamplingParams
 
 from helper.prompting import prepare_conversation
@@ -16,6 +17,9 @@ import helper.configs as configs
 MAX_TOKENS = 256
 SAMPLES_PER_CUE = 100
 START_TIME = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+# UserWarning: TensorFloat32 tensor cores for float32 matrix multiplication available but not enabled. Consider setting `torch.set_float32_matmul_precision('high')` for better performance.
+
 
 def get_model_name(model):
     return model.split("/")[-1]
@@ -111,7 +115,7 @@ if "__main__" == __name__:
         if "pipeline_parallel_size" in model_config.keys():
             print("WARNING USING ONLY ONE GPU")
             model_config["pipeline_parallel_size" ] = 1
-
+    torch.set_float32_matmul_precision('high')
     start_time = datetime.now()
     outputs = main(dataloader, model, model_config, sampler_config)
     elapsed_time = datetime.now() - start_time
