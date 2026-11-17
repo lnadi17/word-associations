@@ -12,10 +12,12 @@ model_options = {
             "google/gemma-4-12B-it",
             "google/gemma-4-26B-A4B-it",
             "google/gemma-4-31B-it",
+            "orcarouter/Gemma-4-26B-A4B-it-Uncensored-FP8",
             ],
         "qwen" : [
             "Qwen/Qwen3.8-27B",
-            "Qwen/Qwen3.8-27B-FP8"
+            "Qwen/Qwen3.8-27B-FP8",
+            "orcarouter/Qwen3.8-27B-Uncensored-FP8",
             ]
         }
 
@@ -45,6 +47,11 @@ models= {
             "enable_prefix_caching" : True,
             "tensor_parallel_size" : 2,
             },
+        "orcarouter/Gemma-4-26B-A4B-it-Uncensored-FP8" : {
+            "enable_prefix_caching" : True,
+            "tensor_parallel_size" : 2,
+            "kernel_config": {"linear_backend": "marlin"},
+            },
         "google/gemma-4-12B-it" : {
             "enable_prefix_caching" : True,
             "tensor_parallel_size" : 2,
@@ -64,6 +71,10 @@ models= {
         "Qwen/Qwen3.8-27B-FP8" : {
             "enable_prefix_caching" : True,
             "pipeline_parallel_size" : 2,
+            },
+        "orcarouter/Qwen3.8-27B-Uncensored-FP8" : {
+            "enable_prefix_caching" : True,
+            "tensor_parallel_size" : 2,
             },
         }
 
@@ -86,6 +97,11 @@ samplers= {
             # "top_k" : 64,
             },
         "google/gemma-4-26B-A4B-it" : {
+            "temperature" : 1.0,
+            "top_p" : 0.95,
+            # "top_k" : 64,
+            },
+        "orcarouter/Gemma-4-26B-A4B-it-Uncensored-FP8" : {
             "temperature" : 1.0,
             "top_p" : 0.95,
             # "top_k" : 64,
@@ -114,6 +130,14 @@ samplers= {
             "repetition_penalty" : 1.0,
             },
         "Qwen/Qwen3.8-27B-FP8" : {
+            "temperature" : 1.0,
+            "top_p" : 0.95,
+            # "top_k" : 20,
+            "min_p" : 0.0,
+            "presence_penalty" : 0.0,
+            "repetition_penalty" : 1.0,
+            },
+        "orcarouter/Qwen3.8-27B-Uncensored-FP8" : {
             "temperature" : 1.0,
             "top_p" : 0.95,
             # "top_k" : 20,
