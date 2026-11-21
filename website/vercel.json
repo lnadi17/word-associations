@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "flask",
+  "buildCommand": "python prepare_static.py",
+  "functions": {
+    "app.py": {
+      "maxDuration": 60,
+      "includeFiles": "wordviz/resources/**"
+    }
+  }
+}
