@@ -1,5 +1,7 @@
 # word-associations
 
+The [interactive research website](website/README.md) explores word associations across ten networks and compares lexical-decision and gender-priming results across six.
+
 ## TODO
 - [x] Add LWOW dataset
 - [x] Add SWOW dataset
