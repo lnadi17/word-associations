@@ -19,6 +19,7 @@ DEFAULT_PAIRS = (
     ("woman", "man"), ("female", "male"), ("mother", "father"),
     ("girl", "boy"), ("feminine", "masculine"),
 )
+EXACT_SIGN_RANK_LIMIT = 20
 
 
 def connect():
@@ -89,6 +90,34 @@ def signed_rank(differences):
     positive = sum(rank for d, rank in zip(nz, ranks(absolute)) if d > 0)
     z = (positive - n * (n + 1) / 4) / math.sqrt(variance)
     return z / math.sqrt(len(differences)), math.erfc(z / math.sqrt(2)) / 2
+
+
+def two_sided_signed_rank(differences):
+    """Return the signed effect, two-sided p, nonzero count and p-value method."""
+    nonzero = [d for d in differences if d != 0]
+    n = len(nonzero)
+    if n == 0:
+        return None, None, 0, "No nonzero differences"
+    effect, _ = signed_rank(differences)
+    if n > EXACT_SIGN_RANK_LIMIT:
+        p = math.erfc(abs(effect) * math.sqrt(len(differences) / 2))
+        return effect, p, n, "Normal approximation"
+
+    # Double average ranks so tied half-ranks have integer indices. Each
+    # sign assignment contributes once to the distribution of positive sums.
+    weights = [int(2 * rank) for rank in ranks([abs(d) for d in nonzero])]
+    observed = sum(w for w, d in zip(weights, nonzero) if d > 0)
+    total = sum(weights)
+    counts = [0] * (total + 1)
+    counts[0] = 1
+    reached = 0
+    for weight in weights:
+        for subtotal in range(reached, -1, -1):
+            counts[subtotal + weight] += counts[subtotal]
+        reached += weight
+    tail = abs(2 * observed - total)
+    extreme = sum(count for subtotal, count in enumerate(counts) if abs(2 * subtotal - total) >= tail)
+    return effect, extreme / (2 ** n), n, "Exact sign permutation"
 
 
 def ldt_stats(model, experiment):

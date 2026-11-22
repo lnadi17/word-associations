@@ -1,6 +1,7 @@
 """Run rendered chart and dropdown regressions against a running website."""
 
 import argparse
+import re
 
 from playwright.sync_api import expect, sync_playwright
 
@@ -22,6 +23,51 @@ def choose(page, control, option):
     dropdown = page.locator("#" + control)
     dropdown.locator(".Select-control").click()
     dropdown.locator(".Select-menu-outer").get_by_text(option, exact=True).click()
+
+
+def check_religion_targets(page, methods):
+    targets = page.locator("#bias-targets-0")
+    chips = targets.locator(".Select-value-label")
+    effect = page.locator("#effect-results")
+    source = page.locator("#target-editor a")
+    default_words = ["religious", "faithful", "holy", "pure", "moral", "modest"]
+    aggression_words = ["aggressive", "angry", "violent", "dangerous", "mean"]
+    expect(chips).to_have_text(default_words)
+    expect(effect).to_contain_text("6/6 targets")
+    expect(source).to_be_visible()
+    expect(source).to_have_attribute("href", re.compile("13684302221138036"))
+
+    choose(page, "target-preset", "Perceived warmth")
+    expect(chips).to_have_text(["benevolent", "altruistic", "honest", "sincere", "sociable", "warm"])
+    expect(source).to_have_attribute("href", re.compile("S1755048326100601"))
+    choose(page, "target-preset", re.compile("aggress", re.I))
+    expect(chips).to_have_text(aggression_words)
+    expect(effect).to_contain_text("5/5 targets")
+    methods.get_by_text("Heatmaps", exact=True).click()
+    heatmaps = page.locator("#heat-results .dash-graph")
+    expect(heatmaps).to_have_count(2)
+    expect(chips).to_have_text(aggression_words)
+    expect(source).to_have_attribute("href", re.compile("13684302221138036"))
+    for heatmap in heatmaps.all():
+        check_chart(heatmap, ".heatmaplayer image", 320)
+        expect(heatmap.locator(".ytick text")).to_have_text(aggression_words)
+
+    targets.locator(".Select-value").filter(has_text="violent").locator(".Select-value-icon").click()
+    edited_words = [word for word in aggression_words if word != "violent"]
+    for heatmap in heatmaps.all():
+        expect(heatmap.locator(".ytick text")).to_have_text(edited_words)
+    methods.get_by_text("Priming effects", exact=True).click()
+    expect(chips).to_have_text(edited_words)
+    expect(effect).to_contain_text("4/4 targets")
+
+    page.locator("#target-reset").click()
+    expect(chips).to_have_text(aggression_words)
+    expect(effect).to_contain_text("5/5 targets")
+    methods.get_by_text("Heatmaps", exact=True).click()
+    expect(heatmaps).to_have_count(2)
+    for heatmap in heatmaps.all():
+        expect(heatmap.locator(".ytick text")).to_have_text(aggression_words)
+    check_width(page)
 
 
 def check_page(page, url):
@@ -67,19 +113,25 @@ def check_page(page, url):
     expect(page.locator("#effect-results table tbody tr")).to_have_count(2)
 
     methods = page.locator("#bias-view")
-    methods.get_by_text("Heatmaps", exact=True).click()
-    heatmaps = page.locator("#heat-results .dash-graph")
-    expect(heatmaps).to_have_count(2)
-    for heatmap in heatmaps.all():
-        check_chart(heatmap, ".heatmaplayer image", 320)
-    check_width(page)
+    check_religion_targets(page, methods)
 
     methods.get_by_text("Word valence", exact=True).click()
-    check_chart(page.locator("#valence-results .dash-graph"), ".scatterlayer .point", 320)
+    valence = page.locator("#valence-results .dash-graph")
+    check_chart(valence, ".scatterlayer .point", 320)
+    expect(valence.locator(".xtitle")).to_have_text("Prime")
+    expect(valence.locator(".xaxislayer-above .xtick")).to_contain_text(["christian", "muslim"])
+    expect(valence.locator(".xtick text").last).to_be_visible()
+    expect(valence.locator(".ytitle")).to_have_text("Valence slope")
+    expect(valence.locator(".errorbars .yerror").first).to_be_visible()
     expect(page.locator("#valence-results table").first.locator("tbody tr")).to_have_count(2)
     choose(page, "social-domain", "Political party (US)")
     methods.get_by_text("Emotion word sets", exact=True).click()
-    check_chart(page.locator("#emotion-results .dash-graph"), ".scatterlayer .point", 320)
+    emotion = page.locator("#emotion-results .dash-graph")
+    check_chart(emotion, ".scatterlayer .point", 320)
+    expect(emotion.locator(".xtitle")).to_have_text("Emotion word set")
+    expect(emotion.locator(".xaxislayer-above .xtick")).to_contain_text(["anger", "trust"])
+    expect(emotion.locator(".xtick text").last).to_be_visible()
+    expect(emotion.locator(".ytitle")).to_have_text("Signed-rank effect (z/√N)")
     expect(page.locator("#emotion-results table tbody tr")).to_have_count(16)
     check_width(page)
 

@@ -32,7 +32,7 @@ def number(value):
     return "—" if value is None else f"{value:.3f}"
 
 
-def norm_chart(results, category_key, value_key, axis_title):
+def norm_chart(results, category_key, category_title, value_key, value_title):
     categories = list(dict.fromkeys(row[category_key] for result in results.values() for row in result["rows"]))
     fig = go.Figure()
     for index, (model, result) in enumerate(results.items()):
@@ -41,25 +41,28 @@ def norm_chart(results, category_key, value_key, axis_title):
         values = [row[value_key] for row in rows]
         if not rows:
             continue
-        offset = 0 if len(results) == 1 else (-.14, .14)[index]
+        offset = 0 if len(results) == 1 else (-.2, .2)[index]
         error = None
         if value_key == "slope":
             error = {"type": "data", "symmetric": False,
                      "array": [r["ci_high"] - r["slope"] if r["ci_high"] is not None else 0 for r in rows],
                      "arrayminus": [r["slope"] - r["ci_low"] if r["ci_low"] is not None else 0 for r in rows]}
-        fig.add_scatter(name=MATRIX_MODELS[model], x=values,
-                        y=[categories.index(label) + offset for label in labels], mode="markers",
+        fig.add_scatter(name=MATRIX_MODELS[model], x=[categories.index(label) + offset for label in labels],
+                        y=values, mode="markers",
                         marker={"size": 10, "color": (ACCENT, SECONDARY)[index], "symbol": ("circle", "diamond")[index]},
-                        error_x=error, customdata=[[r[category_key], r["n"], format_p(r["p"])] for r in rows],
-                        hovertemplate="%{customdata[0]}<br>%{x:.3f}<br>Words %{customdata[1]:,}<br>p %{customdata[2]}<extra>%{fullData.name}</extra>")
+                        error_y=error, customdata=[[r[category_key], r["n"], format_p(r["p"])] for r in rows],
+                        hovertemplate=("%{customdata[0]}<br>" + value_title +
+                                       " %{y:.3f}<br>Words %{customdata[1]:,}<br>p %{customdata[2]}<extra>%{fullData.name}</extra>"))
     if not fig.data:
         return html.P("The selected networks have no estimable values for this comparison.", role="status")
-    style_figure(fig, max(330, 150 + 35 * len(categories)))
-    fig.update_layout(margin={"l": 8, "r": 20, "t": 50, "b": 65}, showlegend=True,
+    style_figure(fig, 375)
+    fig.update_layout(margin={"l": 50, "r": 15, "t": 50, "b": 40}, showlegend=True,
                       legend={"orientation": "h", "y": 1.05, "yanchor": "bottom"})
-    fig.update_yaxes(tickmode="array", tickvals=list(range(len(categories))), ticktext=categories,
-                     range=[len(categories) - .45, -.55], automargin=True)
-    fig.update_xaxes(title_text=axis_title, zeroline=True, zerolinewidth=2, zerolinecolor="#657b72")
+    fig.update_xaxes(title_text=category_title, tickmode="array", tickvals=list(range(len(categories))),
+                     ticktext=categories, range=[-.5, len(categories) - .5], showgrid=False,
+                     zeroline=False, automargin=True, autotickangles=[0, 90], title_standoff=8)
+    fig.update_yaxes(title_text=value_title, title_standoff=8, automargin=True, rangemode="tozero",
+                     zeroline=True, zerolinewidth=2, zerolinecolor="#657b72")
     return graph(fig)
 
 
@@ -97,7 +100,7 @@ def valence_view(domain, a, b):
     return html.Section([
         html.H2("Activation and word valence"),
         html.P(f"{scope} · {DOMAIN_LABELS[domain]}. A positive slope means words reached more strongly by that prime tend to have higher human pleasantness ratings. Whiskers show 95% confidence intervals."),
-        *notes, norm_chart(results, "prime", "slope", "Valence slope"),
+        *notes, norm_chart(results, "prime", "Prime", "slope", "Valence slope"),
         html.H3("Do slopes differ across primes?"),
         html.P("The joint Wald test compares the prime coefficients in one model of word valence. Partial R² measures the additional variation explained by allowing these coefficients to differ."),
         result_table(["Network", "Rated words", "Wald χ²", "df", "p", "Partial R²"], joint_rows,
@@ -128,7 +131,7 @@ def emotion_view(domain, a, b, left, right):
     return html.Section([
         html.H2("Activation by emotion word set"),
         html.P(f"{scope} · {DOMAIN_LABELS[domain]}. Positive effects mean words in a set received stronger activation from {left}. Negative effects favor {right}."),
-        *notes, norm_chart(results, "emotion", "effect", "Signed-rank effect (z/√N)"),
+        *notes, norm_chart(results, "emotion", "Emotion word set", "effect", "Signed-rank effect (z/√N)"),
         html.Details([html.Summary("Paired test statistics"), result_table(
             ["Network", "Emotion", "Matched words", "Nonzero pairs", "Effect", "Two-sided p"], rows,
             label="Emotion word set tests")]),

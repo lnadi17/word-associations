@@ -87,6 +87,8 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
 .method-tabs { max-width: 100%; }
 .method-tabs label { padding: 9px 15px; }
 .social-toolbar > .field { flex: 1 1 175px; }
+.study-primes > .field:first-child { flex: 2 1 320px; }
+#target-edits:empty { display: none; }
 .model-selectors { flex: 2 1 340px; display: flex; flex-wrap: wrap; gap: 14px 20px; }
 .model-selectors[hidden] { display: none; }
 .model-selectors > .field { flex: 1 1 145px; }

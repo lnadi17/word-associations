@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from math import erfc, sqrt
-
 from dash import Dash, Input, Output, State, dcc, html, set_props
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from .experiment_data import DEFAULT_PAIRS, MODELS, ldt_stats, metadata, signed_rank
+from .experiment_data import (
+    DEFAULT_PAIRS, EXACT_SIGN_RANK_LIMIT, MODELS, ldt_stats, metadata, signed_rank, two_sided_signed_rank,
+)
 from .social_data import domain_info, domain_suggest, domain_values
 from .social_domains import DOMAIN_LABELS, DOMAIN_PRIMES
+from .target_presets import TARGET_PRESETS
 
 ACCENT = "#17735f"
 SECONDARY = "#bf6b36"
@@ -18,7 +19,6 @@ GRID = "#e4e8e5"
 INK = "#20342d"
 GROUPS = ["Female-related targets", "Male-related targets"]
 PRIME_TEXT = ", ".join(f"{left}/{right}" for left, right in DEFAULT_PAIRS)
-EXAMPLE_TARGETS = ("book", "bread", "chair", "clock", "cup", "door", "key", "lamp", "pencil", "table")
 BIAS_PAPER = "https://arxiv.org/html/2510.24488#S3"
 GRAPH_CONFIG = {"displaylogo": False, "modeBarButtonsToRemove": ["lasso2d", "select2d"]}
 
@@ -169,24 +169,38 @@ def render_ldt(a, b, target_index):
     ]
 
 
-def initial_groups(domain):
-    return metadata("targets") if domain == "gender" else [list(EXAMPLE_TARGETS)]
-
-
 def initial_primes(domain):
     if domain == "gender":
         return [left for left, _ in DEFAULT_PAIRS] + [right for _, right in DEFAULT_PAIRS]
     return list(DOMAIN_PRIMES[domain])
 
 
+def target_field(label, words, index, persistence):
+    return field(label, dcc.Dropdown(id=f"bias-targets-{index}", multi=True,
+                                     options=list(words), value=list(words),
+                                     placeholder="Search target words"), persistence=persistence)
+
+
+def study_target_editor(domain, name):
+    preset = TARGET_PRESETS.get(domain, {}).get(name)
+    if preset is None:
+        return html.P("Choose a target-word preset.", role="status")
+    persistence = f"{domain}/{name}"
+    return html.Div([
+        target_field("Target words", preset.words, 0, persistence),
+        html.P([preset.study.context, " ", html.A(preset.study.citation, href=preset.study.url)],
+               className="source-note"),
+        html.P(id="target-edits", className="source-note", role="status"),
+        html.Button("Restore preset words", id="target-reset", n_clicks=0),
+    ], key=persistence)
+
+
 def stimulus_editor(method, domain):
     gender = domain == "gender"
-    group_labels = GROUPS if gender else ["Target words"]
-    fields = [
-        field(label, dcc.Dropdown(id=f"{method}-targets-{i}", multi=True, value=words,
-                                  placeholder="Search target words"), persistence=domain)
-        for i, (label, words) in enumerate(zip(group_labels, initial_groups(domain)))
-    ]
+    fields = []
+    if gender:
+        fields.extend(target_field(label, words, i, domain)
+                      for i, (label, words) in enumerate(zip(GROUPS, metadata("targets"))))
     primes = initial_primes(domain)
     if method == "heat":
         fields.append(field("Primes", dcc.Dropdown(id="heat-primes", options=primes,
@@ -198,23 +212,26 @@ def stimulus_editor(method, domain):
         for key, label in (("left", "First prime"), ("right", "Second prime")):
             fields.append(field(label, dcc.Dropdown(id=f"effect-{key}", options=primes,
                                 placeholder="Choose a prime"), persistence=domain))
-    fields.append(html.Button("Restore paper preset" if gender else "Reset example",
-                              id=f"{method}-reset", n_clicks=0))
     if gender:
+        fields.append(html.Button("Restore paper preset", id=f"{method}-reset", n_clicks=0))
         note = ("Enter ordered prime pairs as first/second, separated by commas."
                 if method == "effect" else "Choose which saved prime columns to display.")
-    else:
-        note = ("The starting targets are ten everyday objects chosen to illustrate activation. "
-                "Replace them with your study’s target words.")
-    controls = [html.P(note), html.Div(fields, className="controls")]
-    if gender:
-        return html.Details([html.Summary("Edit primes and targets"), *controls], className="panel")
-    return html.Section([html.H3("Primes and targets"), *controls], className="panel")
+        return html.Details([html.Summary("Edit primes and targets"), html.P(note),
+                             html.Div(fields, className="controls")], className="panel")
+    names = list(TARGET_PRESETS[domain])
+    return html.Section([
+        html.H3("Primes and targets"),
+        html.Div([field("Target-word preset", dcc.Dropdown(id="target-preset", options=names,
+                        value=names[0], clearable=False, searchable=False), persistence=domain),
+                  *fields], className="controls study-primes"),
+        html.Div(id="target-editor"),
+    ], className="panel")
 
 
 def activation_layout(method, domain):
     return html.Div([
         dcc.Store(id=f"{method}-domain", data=domain),
+        dcc.Store(id="target-domain", data=domain),
         stimulus_editor(method, domain),
         dcc.Loading(html.Div(id=f"{method}-results")),
     ], key=f"{method}-{domain}")
@@ -380,11 +397,11 @@ def contrast_results(models, targets, left, right, values):
     rows, effects = [], []
     for model in models:
         deltas = [values[model][w][left] - values[model][w][right] for w in shared]
-        effect, _ = signed_rank(deltas)
-        p = None if effect is None else erfc(abs(effect) * sqrt(len(deltas) / 2))
+        effect, p, nonzero, method = two_sided_signed_rank(deltas)
         effects.append(effect)
-        rows.append([MODELS[model], len(deltas), sum(d != 0 for d in deltas),
-                     f"{sum(deltas) / len(deltas):+.4f}", "—" if effect is None else f"{effect:+.3f}", format_p(p)])
+        displayed_p = format_p(p) if p in (None, 0) else f"{p:.4g}"
+        rows.append([MODELS[model], len(deltas), nonzero, f"{sum(deltas) / len(deltas):+.4f}",
+                     "—" if effect is None else f"{effect:+.3f}", displayed_p, method])
     chart = []
     if any(effect is not None for effect in effects):
         figure = go.Figure(go.Bar(
@@ -398,11 +415,13 @@ def contrast_results(models, targets, left, right, values):
         html.P(f"Positive values indicate greater activation after {left}. Negative values favor {right}. "
                "The paired observations are the selected target words."),
         *chart,
-        result_table(["Network", "Targets", "Nonzero differences", "Mean difference", "Effect", "Two-sided p"],
+        result_table(["Network", "Targets", "Nonzero differences", "Mean difference", "Effect", "Two-sided p", "P-value method"],
                      rows, label="Custom priming contrast"),
         html.P(coverage, className="source-note"),
-        html.P("Exploratory two-sided Wilcoxon signed-rank test using the tie-corrected normal approximation. "
-               "P-values are unadjusted. All-zero differences yield an undefined standardized effect and p-value.",
+        html.P(f"The exploratory Wilcoxon signed-rank test uses exact sign permutations for up to {EXACT_SIGN_RANK_LIMIT} "
+               "nonzero differences and a tie-corrected normal approximation for larger samples. "
+               "Zero differences drop out of the test. The effect uses all matched targets in z/√N. "
+               "P-values are unadjusted. All-zero differences yield an undefined effect and p-value.",
                className="source-note"),
     ]
 
@@ -467,30 +486,47 @@ def render_heatmaps(domain, a, b, first, second, selected_primes):
     ], className="panel")
 
 
-def register_stimuli(app, method):
+def register_stimuli(app):
     for i in (0, 1):
-        target = f"{method}-targets-{i}"
+        target = f"bias-targets-{i}"
 
         @app.callback(Output(target, "options"), Input(target, "search_value"), Input("social-a", "value"),
-                      Input("social-b", "value"), Input(target, "value"), State(f"{method}-domain", "data"))
+                      Input("social-b", "value"), Input(target, "value"), State("target-domain", "data"))
         def suggestions(query, a, b, chosen, domain):
             matches = domain_suggest(domain, query, selected_models(a, b))
             return list(dict.fromkeys([*(chosen or []), *matches]))
 
-    @app.callback(Input(f"{method}-reset", "n_clicks"), State(f"{method}-domain", "data"),
-                  prevent_initial_call=True)
-    def reset(clicks, domain):
-        if not clicks or domain not in DOMAIN_PRIMES:
-            return
-        for i, words in enumerate(initial_groups(domain)):
-            set_props(f"{method}-targets-{i}", {"value": words})
-        if method == "heat":
-            set_props("heat-primes", {"value": initial_primes(domain)})
-        elif domain == "gender":
-            set_props("effect-pairs", {"value": PRIME_TEXT})
-        else:
-            set_props("effect-left", {"value": None})
-            set_props("effect-right", {"value": None})
+    app.callback(Output("target-editor", "children"), Input("target-domain", "data"),
+                 Input("target-preset", "value"))(study_target_editor)
+
+    @app.callback(Output("target-edits", "children"), Input("bias-targets-0", "value"),
+                  State("target-domain", "data"), State("target-preset", "value"))
+    def describe_target_edits(words, domain, name):
+        preset = TARGET_PRESETS.get(domain, {}).get(name)
+        if preset and set(words or []) != set(preset.words):
+            return "Custom selection. The study link documents the original preset words."
+        return None
+
+    @app.callback(Input("target-reset", "n_clicks"), State("target-domain", "data"),
+                  State("target-preset", "value"), prevent_initial_call=True)
+    def restore_study_words(clicks, domain, name):
+        preset = TARGET_PRESETS.get(domain, {}).get(name)
+        if clicks and preset:
+            set_props("bias-targets-0", {"value": list(preset.words)})
+
+    def register_gender_reset(method):
+        @app.callback(Input(f"{method}-reset", "n_clicks"), prevent_initial_call=True)
+        def restore_gender(clicks):
+            if clicks:
+                for i, words in enumerate(metadata("targets")):
+                    set_props(f"bias-targets-{i}", {"value": words})
+                if method == "heat":
+                    set_props("heat-primes", {"value": initial_primes("gender")})
+                else:
+                    set_props("effect-pairs", {"value": PRIME_TEXT})
+
+    for method in ("effect", "heat"):
+        register_gender_reset(method)
 
 
 def register(app: Dash):
@@ -499,14 +535,13 @@ def register(app: Dash):
     def ldt_callback(a, b, target_index, _run):
         return render_ldt(a, b, target_index)
 
-    for method in ("effect", "heat"):
-        register_stimuli(app, method)
+    register_stimuli(app)
     app.callback(Output("effect-results", "children"), Input("effect-domain", "data"),
-                 Input("social-a", "value"), Input("social-b", "value"), Input("effect-targets-0", "value"),
-                 Input("effect-targets-1", "value", allow_optional=True),
+                 Input("social-a", "value"), Input("social-b", "value"), Input("bias-targets-0", "value"),
+                 Input("bias-targets-1", "value", allow_optional=True),
                  Input("effect-pairs", "value", allow_optional=True),
                  Input("effect-left", "value", allow_optional=True),
                  Input("effect-right", "value", allow_optional=True))(render_effect)
     app.callback(Output("heat-results", "children"), Input("heat-domain", "data"),
-                 Input("social-a", "value"), Input("social-b", "value"), Input("heat-targets-0", "value"),
-                 Input("heat-targets-1", "value", allow_optional=True), Input("heat-primes", "value"))(render_heatmaps)
+                 Input("social-a", "value"), Input("social-b", "value"), Input("bias-targets-0", "value"),
+                 Input("bias-targets-1", "value", allow_optional=True), Input("heat-primes", "value"))(render_heatmaps)
