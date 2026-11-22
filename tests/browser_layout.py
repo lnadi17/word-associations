@@ -20,7 +20,9 @@ def check_width(page):
 
 def check_page(page, url):
     page.goto(url)
+    check_chart(page.locator(".bar-scroll .dash-graph"), ".barlayer .point", 300)
     compare = page.get_by_role("combobox", name="Compare model", exact=True)
+    expect(compare).to_be_visible()
     page.get_by_text("Compare model", exact=True).click()
     expect(compare).to_be_focused()
     expect(compare).to_have_css("outline-style", "none")
@@ -47,7 +49,8 @@ def check_page(page, url):
     check_width(page)
 
     page.get_by_role("link", name="Implicit bias").click()
-    compare = page.get_by_role("combobox", name="Compare with", exact=True)
+    expect(page.locator("#bias-results .heatmaplayer image").first).to_be_visible()
+    compare = page.locator("#bias-b").get_by_role("combobox", name="Compare with", exact=True)
     page.get_by_text("Compare with", exact=True).click()
     compare.fill("GPT-5 mini")
     page.locator("#bias-b .Select-menu-outer").get_by_text("GPT-5 mini", exact=True).click()
