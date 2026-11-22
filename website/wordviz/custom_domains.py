@@ -46,8 +46,8 @@ def _domain(key, name, primes, pairs):
     name = _label(name, "domain name")
     if name.casefold() in {label.casefold() for label in DOMAIN_LABELS.values()}:
         raise ValueError("Choose a name distinct from the published domains.")
-    if not 1 <= len(pairs) <= MAX_LISTS:
-        raise ValueError(f"Add 1–{MAX_LISTS} named word lists.")
+    if len(pairs) > MAX_LISTS:
+        raise ValueError(f"Use up to {MAX_LISTS} named word lists.")
     primes = _words(primes, "primes", 2, MAX_PRIMES)
     lists = {}
     for title, words in pairs:
@@ -60,10 +60,13 @@ def _domain(key, name, primes, pairs):
 
 def validate_domain(value):
     """Return a canonical record or None for malformed browser state."""
-    if not isinstance(value, dict) or not isinstance(value.get("lists"), dict):
+    if not isinstance(value, dict):
+        return None
+    lists = value.get("lists", {})
+    if not isinstance(lists, dict):
         return None
     try:
-        return _domain(value.get("id"), value.get("name"), value.get("primes"), value["lists"].items())
+        return _domain(value.get("id"), value.get("name"), value.get("primes"), lists.items())
     except ValueError:
         return None
 
@@ -96,9 +99,13 @@ def save_domain(data, original, name, prime_text, titles, target_texts):
         raise ValueError(f"This browser already has {MAX_DOMAINS} custom domains.")
     if not isinstance(titles, list) or not isinstance(target_texts, list) or len(titles) != len(target_texts):
         raise ValueError("Enter a name and words for each list.")
-    if not 1 <= len(titles) <= MAX_LISTS:
-        raise ValueError(f"Add 1–{MAX_LISTS} named word lists.")
-    pairs = [(title, _split(words, MAX_TARGETS)) for title, words in zip(titles, target_texts)]
+    if len(titles) > MAX_LISTS:
+        raise ValueError(f"Use up to {MAX_LISTS} named word lists.")
+    pairs = []
+    for title, words in zip(titles, target_texts):
+        if isinstance(title, str) and isinstance(words, str) and not (title.strip() or words.strip()):
+            continue
+        pairs.append((title, _split(words, MAX_TARGETS)))
     record = _domain(key, name, _split(prime_text, MAX_PRIMES), pairs)
     if any(d["name"].casefold() == record["name"].casefold() for k, d in library.items() if k != key):
         raise ValueError("A saved domain already has that name.")
@@ -113,7 +120,7 @@ def _field(label, control):
     return html.Div([html.Label(label, htmlFor=component_id), control], className="field")
 
 
-def _list_row(title="Targets", words=()):
+def _list_row(title="", words=()):
     key = uuid4().hex
     return html.Div([
         _field("Word-list name", dcc.Input(id={"type": "domain-list-name", "key": key},
@@ -138,10 +145,10 @@ def layout():
 
 def _form(record):
     creating = not record
-    lists = {"Targets": []} if creating else record["lists"]
+    lists = {} if creating else record["lists"]
     primes = [] if creating else record["primes"]
     template = [] if record else [_field("Start with primes from", dcc.Dropdown(
-        id="custom-template", clearable=False, searchable=False, value="",
+        id="custom-template", clearable=False, searchable=False, placeholder="Blank list",
         options=[{"value": "", "label": "Blank list"}] + [
             {"value": key, "label": name} for key, name in DOMAIN_LABELS.items()]))]
     delete = [] if creating else [dcc.ConfirmDialogProvider(
@@ -159,8 +166,10 @@ def _form(record):
                    value=", ".join(primes), rows=2, placeholder="young, old",
                    maxLength=(WORD_LIMIT + 2) * MAX_PRIMES, style={"width": "100%"})),
         ], className="controls"),
-        html.H3("Target word lists"),
-        html.P(f"Add up to {MAX_LISTS} lists with up to {MAX_TARGETS} words each.", className="hint"),
+        html.H3("Target word lists (optional)"),
+        html.P("Word valence and Emotion word sets use your primes with their own reference words. "
+               f"For the other views, you can add up to {MAX_LISTS} lists of {MAX_TARGETS} words each, now or later.",
+               className="hint"),
         html.Div([_list_row(title, words) for title, words in lists.items()], id="custom-list-rows"),
         html.Div([html.Button("Add word list", id="custom-add-list", n_clicks=0,
                               disabled=len(lists) >= MAX_LISTS),
@@ -173,9 +182,14 @@ def _form(record):
 def register(app):
     @app.callback(Output("social-domain", "options"), Output("social-domain", "value"),
                   Output("custom-ready", "data"), Input("custom-domains", "modified_timestamp"), Input("custom-action", "data"),
+                  Input("custom-summary", "n_clicks"),
                   State("custom-domains", "data"), State("custom-last-domain", "data"),
                   State("social-domain", "value"), State("custom-ready", "data"))
-    def domain_options(_timestamp, action, data, last, current, ready):
+    def domain_options(_timestamp, action, open_editor, data, last, current, ready):
+        if ctx.triggered_id == "custom-summary":
+            if open_editor and current in DOMAIN_LABELS:
+                return no_update, NEW_DOMAIN, no_update
+            raise PreventUpdate
         library = _library(data)
         options = [{"label": name, "value": key} for key, name in DOMAIN_LABELS.items()]
         options += [{"label": record["name"], "value": key} for key, record in library.items()]
@@ -202,7 +216,9 @@ def register(app):
     def show_editor(key, _action, data):
         record = get_domain(data, key)
         label = f'Edit {record["name"]}' if record else "Add a custom domain"
-        return _form(record), label, key == NEW_DOMAIN
+        if not record and key != NEW_DOMAIN:
+            return None, label, False
+        return html.Div(_form(record), key=key), label, key == NEW_DOMAIN
 
     @app.callback(Output("custom-primes", "value"), Input("custom-template", "value", allow_optional=True),
                   prevent_initial_call=True)
@@ -221,7 +237,7 @@ def register(app):
         if trigger == "custom-add-list" and add:
             if len(ids) >= MAX_LISTS:
                 return no_update, True
-            patch.append(_list_row(""))
+            patch.append(_list_row())
             return patch, len(ids) + 1 >= MAX_LISTS
         elif isinstance(trigger, dict) and trigger in ids and clicks[ids.index(trigger)]:
             del patch[ids.index(trigger)]

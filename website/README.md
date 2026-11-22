@@ -16,9 +16,9 @@ Open [the local explorer](http://127.0.0.1:8050/). Set `PORT` to choose a differ
 
 ## Custom social domains
 
-On **Implicit bias**, open **Social domain → Add a custom domain…**. Name the domain, enter 2–12 prime words and add one or more named target lists (up to 100 words per list). Paste words separated by commas or new lines. You can start with primes from a published domain. Choose **Save and use domain** to analyze the definition or select it later from the same browser. Use **Edit** under the domain selector to update or delete it. Clearing this site's browser storage removes saved definitions.
+On **Implicit bias**, open **Social domain → Add a custom domain…**. Enter a name and 2–12 prime words, then choose **Save and use domain**. You can paste words separated by commas or new lines, or start with primes from a published domain. Target lists are optional. Use **Edit** under the domain selector to add named lists later (up to 100 words per list), update primes, or delete the domain. Clearing this site's browser storage removes saved definitions.
 
-Priming effects and Heatmaps use the selected target list. Association paths lets you choose a saved list and starts with up to two primes and two targets. Word valence uses all NRC-rated words in the network, and Emotion word sets uses the eight NRC categories for the selected prime pair. Graph coverage is reported for each network. Custom domains use the current weighted graph, including when they reuse a published gender prime.
+Word valence uses all words in the graph with an NRC valence rating. Emotion word sets uses the eight NRC emotion categories for the selected prime pair. For Priming effects and Heatmaps, choose a saved target list or search for individual targets in either tab. Association paths also accepts individual target words. With a saved list, it starts with up to two primes and two targets. Graph coverage is reported for each network. Custom domains use the current weighted graph, including when they reuse a published gender prime.
 
 ## Vercel deployment
 

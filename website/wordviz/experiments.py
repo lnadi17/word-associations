@@ -209,7 +209,7 @@ def study_target_editor(domain, name):
     ], key=persistence)
 
 
-def stimulus_editor(method, domain):
+def stimulus_editor(method, domain, session_targets=None):
     gender = domain == "gender"
     custom = isinstance(domain, dict)
     persistence = key_for(domain)
@@ -236,6 +236,17 @@ def stimulus_editor(method, domain):
         return html.Details([html.Summary("Edit primes and targets"), html.P(note),
                              html.Div(fields, className="controls")], className="panel")
     names = list(domain["lists"] if custom else TARGET_PRESETS[domain])
+    if not names:
+        words = session_targets.get(persistence) if isinstance(session_targets, dict) else None
+        if not isinstance(words, list) or not all(isinstance(word, str) for word in words):
+            words = []
+        return html.Section([
+            dcc.Store(id="temporary-target-key", data=persistence),
+            html.H3("Primes and targets"),
+            html.Div([target_field("Target words", words, 0, False), *fields], className="controls study-primes"),
+            html.P("Priming effects and Heatmaps share these target words for this visit.",
+                   className="source-note"),
+        ], className="panel")
     return html.Section([
         html.H3("Primes and targets"),
         html.Div([field("Saved word list" if custom else "Target-word preset",
@@ -246,21 +257,21 @@ def stimulus_editor(method, domain):
     ], className="panel")
 
 
-def activation_layout(method, domain):
+def activation_layout(method, domain, session_targets):
     return html.Div([
         dcc.Store(id=f"{method}-domain", data=domain),
         dcc.Store(id="target-domain", data=domain),
-        stimulus_editor(method, domain),
+        stimulus_editor(method, domain, session_targets),
         dcc.Loading(html.Div(id=f"{method}-results")),
     ], key=f"{method}-{key_for(domain)}")
 
 
-def priming_layout(domain):
-    return activation_layout("effect", domain)
+def priming_layout(domain, session_targets=None):
+    return activation_layout("effect", domain, session_targets)
 
 
-def heatmaps_layout(domain):
-    return activation_layout("heat", domain)
+def heatmaps_layout(domain, session_targets=None):
+    return activation_layout("heat", domain, session_targets)
 
 
 def parse_pairs(text, primes):
@@ -369,7 +380,8 @@ def selection_problem(domain, a, b, groups):
     if a == b:
         return "Choose a different comparison network, or clear Compare with."
     if not all(groups):
-        return "Choose at least one target word in each displayed group."
+        return ("Choose at least one target word in each displayed group." if len(groups) > 1
+                else "Search for a target word to run this analysis.")
     if any(len(group) > 100 for group in groups):
         return "Select up to 100 targets per group."
     if len(groups) == 2 and set(groups[0]).intersection(groups[1]):
@@ -507,6 +519,25 @@ def render_heatmaps(domain, a, b, first, second, selected_primes):
 
 
 def register_stimuli(app):
+    app.clientside_callback(
+        """
+        function(words, key, saved) {
+            if (!key || !Array.isArray(words)) {
+                return dash_clientside.no_update;
+            }
+            const previous = saved?.[key] || [];
+            if (previous.length === words.length && words.every((word, i) => word === previous[i])) {
+                return dash_clientside.no_update;
+            }
+            return {...saved, [key]: words};
+        }
+        """,
+        Output("session-targets", "data"),
+        Input("bias-targets-0", "value", allow_optional=True),
+        State("temporary-target-key", "data", allow_optional=True),
+        State("session-targets", "data"),
+    )
+
     for i in (0, 1):
         target = f"bias-targets-{i}"
 

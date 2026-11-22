@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "website"))
 
-from wordviz.custom_domains import MAX_PRIMES, MAX_TARGETS, get_domain, save_domain, validate_domain
+from wordviz.custom_domains import MAX_LISTS, MAX_PRIMES, MAX_TARGETS, get_domain, save_domain, validate_domain
 
 
 class CustomDomainsTests(unittest.TestCase):
@@ -26,6 +26,21 @@ class CustomDomainsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "another tab"):
             save_domain(updated, original, "Age", "baby, old", ["Roles"], ["friend"])
 
+    def test_save_primes_alone_then_add_and_remove_last_list(self):
+        library, key = save_domain({}, None, "Age", "old, young", [], [])
+        for titles, words, expected in [
+            (["Traits", " "], ["wise", "\n"], {"Traits": ["wise"]}),
+            ([], [], {}),
+            ([""], [""], {}),
+        ]:
+            original = get_domain(library, key)
+            library, same_key = save_domain(library, original, "Age", "old, young", titles, words)
+            self.assertEqual(key, same_key)
+            self.assertEqual(get_domain(library, key)["lists"], expected)
+        record = library[key].copy()
+        del record["lists"]
+        self.assertEqual(validate_domain(record), library[key])
+
     def test_invalid_lists_names_and_limits(self):
         library, key = self.save()
         for name, primes, titles, words in [
@@ -35,6 +50,8 @@ class CustomDomainsTests(unittest.TestCase):
             ("Age", ",".join(map(str, range(MAX_PRIMES + 1))), ["Targets"], ["wise"]),
             ("Age", "young, old", ["Traits", "TRAITS"], ["wise", "kind"]),
             ("Age", "young, old", ["Targets"], [""]),
+            ("Age", "young, old", [" "], ["wise"]),
+            ("Age", "young, old", [""] * (MAX_LISTS + 1), [""] * (MAX_LISTS + 1)),
             ("Age", "young, old", ["Targets"], [",".join(map(str, range(MAX_TARGETS + 1)))]),
         ]:
             with self.subTest(name=name, primes=primes, titles=titles):
