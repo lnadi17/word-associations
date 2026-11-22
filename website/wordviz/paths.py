@@ -27,10 +27,14 @@ def layout(domain="gender", primary_model="humans", comparison_model=None):
     note = ""
     if isinstance(domain, dict):
         names = list(domain["lists"])
-        starts, ends = starts[:2], domain["lists"][names[0]][:2]
-        extra_fields = [_field("Saved target list", dcc.Dropdown(id="path-list", options=names,
-                               value=names[0], clearable=False), persistence)]
-        note = " Each list starts with up to two targets. Select other words to trace additional routes."
+        starts, ends = starts[:2], []
+        if names:
+            ends = domain["lists"][names[0]][:2]
+            extra_fields = [_field("Saved target list", dcc.Dropdown(id="path-list", options=names,
+                                   value=names[0], clearable=False), persistence)]
+            note = " Each list starts with up to two targets. Select other words to trace additional routes."
+        else:
+            note = " Choose a target word to trace a route from your primes."
     elif domain != "gender":
         note = " The example target is community. Choose any graph node to explore another target."
     legend = []

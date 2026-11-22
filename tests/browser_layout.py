@@ -142,6 +142,7 @@ def check_page(page, url):
     check_width(page)
 
     check_custom_domain(page, methods)
+    check_primes_only_domain(page, methods)
 
 
 def check_custom_domain(page, methods):
@@ -149,6 +150,7 @@ def check_custom_domain(page, methods):
     page.locator("#custom-name").fill("Age associations")
     page.locator("#custom-primes").fill("young, old")
     rows = page.locator("#custom-list-rows")
+    page.locator("#custom-add-list").click()
     rows.get_by_label("Word-list name").fill("Experience")
     rows.get_by_label("Target words").fill("wise, capable")
     page.locator("#custom-add-list").click()
@@ -187,6 +189,67 @@ def check_custom_domain(page, methods):
     page.once("dialog", lambda dialog: dialog.accept())
     page.get_by_role("button", name="Delete domain").click()
     expect(page.locator("#social-domain .Select-value-label")).to_have_text("Gender")
+    check_width(page)
+
+
+def search_word(page, control, word):
+    dropdown = page.locator("#" + control)
+    dropdown.locator("input").fill(word)
+    dropdown.locator(".Select-menu-outer").get_by_text(word, exact=True).click()
+
+
+def check_primes_only_domain(page, methods):
+    methods.get_by_text("Word valence", exact=True).click()
+    valence_results = page.locator("#valence-results")
+    expect(valence_results).to_be_attached()
+    choose(page, "social-domain", "Add a custom domain…")
+    # A pending chart response still needs its Dash output while the editor is open.
+    expect(valence_results).to_be_hidden()
+    expect(valence_results).to_be_attached()
+    page.locator("#custom-name").fill("Occupations")
+    page.locator("#custom-primes").fill("teacher, nurse")
+    rows = page.locator("#custom-list-rows")
+    expect(rows.get_by_label("Target words")).to_have_count(0)
+    page.locator("#custom-save").click()
+    domain_label = page.locator("#social-domain .Select-value-label")
+    expect(domain_label).to_have_text("Occupations")
+    valence = valence_results.locator(".dash-graph")
+    expect(valence.locator(".xtick text")).to_have_text(["teacher", "nurse"])
+    expect(valence.locator(".yerror").first).to_be_visible()
+
+    page.reload()
+    expect(domain_label).to_have_text("Occupations")
+    methods.get_by_text("Emotion word sets", exact=True).click()
+    emotion = page.locator("#emotion-results")
+    expect(emotion).to_contain_text("Positive effects mean words in a set received stronger activation from teacher")
+    expect(emotion.locator(".scatterlayer .trace").first.locator(".point")).to_have_count(8)
+
+    for method, results in (("Priming effects", "effect"), ("Heatmaps", "heat")):
+        methods.get_by_text(method, exact=True).click()
+        expect(page.locator(f"#{results}-results [role=status]")).to_contain_text("target")
+        expect(page.locator("#target-preset")).to_have_count(0)
+    search_word(page, "bias-targets-0", "wise")
+    expect(page.locator("#heat-results .dash-graph").first.locator(".ytick text")).to_have_text(["wise"])
+    methods.get_by_text("Priming effects", exact=True).click()
+    expect(page.locator("#effect-results")).to_contain_text("1/1 targets")
+
+    methods.get_by_text("Association paths", exact=True).click()
+    expect(page.locator("#path-results")).to_contain_text("target")
+    expect(page.locator("#path-list")).to_have_count(0)
+    expect(page.locator("#path-start .Select-value-label")).to_have_text(["teacher", "nurse"])
+    expect(page.locator("#path-end .Select-value-label")).to_have_count(0)
+    search_word(page, "path-end", "care")
+    expect(page.locator("#path-results h3").first).to_have_text("teacher → care")
+    expect(page.locator("#path-results .path-pair").first.locator(".scatterlayer .point").first).to_be_visible()
+
+    page.locator("#custom-summary").click()
+    expect(rows.get_by_label("Target words")).to_have_count(0)
+    page.locator("#custom-add-list").click()
+    rows.get_by_label("Word-list name").fill("Training")
+    rows.get_by_label("Target words").fill("skill, knowledge")
+    page.locator("#custom-save").click()
+    expect(page.locator("#path-list .Select-value-label")).to_have_text("Training")
+    expect(page.locator("#path-results h3").first).to_have_text("teacher → skill")
     check_width(page)
 
 
