@@ -1,10 +1,10 @@
 """Dash section for the association paths in bias Figures 8 and 9."""
 
-from dash import Input, Output, State, dcc, html
+from dash import Input, Output, State, dcc, html, set_props
 import plotly.graph_objects as go
 
 from .path_data import MODEL_NAMES, load_graph, stream
-from .social_domains import DOMAIN_PRIMES
+from .social_domains import key_for, primes_for, resolve_domain
 
 
 DEFAULT_PRIMES = ["feminine", "masculine"]
@@ -20,8 +20,19 @@ def _field(label, component, persistence=True):
 
 
 def layout(domain="gender", primary_model="humans", comparison_model=None):
-    starts = DEFAULT_PRIMES if domain == "gender" else DOMAIN_PRIMES[domain]
+    starts = DEFAULT_PRIMES if domain == "gender" else primes_for(domain)
     ends = DEFAULT_TARGETS if domain == "gender" else ["community"]
+    extra_fields = []
+    persistence = key_for(domain)
+    note = ""
+    if isinstance(domain, dict):
+        names = list(domain["lists"])
+        starts, ends = starts[:2], domain["lists"][names[0]][:2]
+        extra_fields = [_field("Saved target list", dcc.Dropdown(id="path-list", options=names,
+                               value=names[0], clearable=False), persistence)]
+        note = " Each list starts with up to two targets. Select other words to trace additional routes."
+    elif domain != "gender":
+        note = " The example target is community. Choose any graph node to explore another target."
     legend = []
     for label, color in [("Negative", VALENCE_COLORS[0][1]), ("Neutral", VALENCE_COLORS[1][1]),
                          ("Positive", VALENCE_COLORS[2][1]), ("Unrated", "#aeb3b6")]:
@@ -33,22 +44,24 @@ def layout(domain="gender", primary_model="humans", comparison_model=None):
         }, **{"aria-hidden": "true"})
         legend.append(html.Li([swatch, label], style={"display": "flex", "alignItems": "center", "gap": "6px"}))
     return html.Section([
+        dcc.Store(id="path-domain", data=domain),
         html.H2("Association paths", id="association-paths"),
         html.P(("Figures 8–9 · " if domain == "gender" else "")
                + "Trace the shortest routes between words in the filtered association graphs. "
                "Color shows human-rated valence from NRC VAD v2.1."
-               + ("" if domain == "gender" else " The example target is community. Choose any graph node to explore another target.")),
+               + note),
         html.Div([
             _field("Path model", dcc.Dropdown(
                 id="path-a", options=MODEL_OPTIONS, value=primary_model, clearable=False)),
             _field("Compare path model", dcc.Dropdown(
                 id="path-b", options=MODEL_OPTIONS, value=comparison_model, placeholder="Single graph")),
+            *extra_fields,
             _field("Starting words", dcc.Dropdown(
                 id="path-start", value=list(starts),
-                multi=True, placeholder="Search graph nodes"), domain),
+                multi=True, placeholder="Search graph nodes"), persistence),
             _field("Target words", dcc.Dropdown(
                 id="path-end", value=list(ends),
-                multi=True, placeholder="Search graph nodes"), domain),
+                multi=True, placeholder="Search graph nodes"), persistence),
         ], className="controls"),
         html.Ul(legend, className="source-note", **{"aria-label": "Word valence legend"},
                 style={"display": "flex", "flexWrap": "wrap", "gap": "6px 18px", "padding": 0}),
@@ -56,11 +69,11 @@ def layout(domain="gender", primary_model="humans", comparison_model=None):
     ], className="panel")
 
 
-def choices(search, a, b, selected):
+def choices(search, a, b, selected, suggested=()):
     selected = list(selected or [])
     query = (search or "").strip().casefold()
     if not query:
-        return selected
+        return list(dict.fromkeys(selected + list(suggested)))
     graphs = [load_graph(m) for m in dict.fromkeys([a, b]) if m in MODEL_NAMES]
     matches = {w for g in graphs for w in g["words"] if w.startswith(query)}
     return list(dict.fromkeys(selected + sorted(matches, key=lambda w: (len(w), w))[:40]))
@@ -164,9 +177,26 @@ def render(a, b, starts, ends):
 
 
 def register(app):
-    for field in ("path-start", "path-end"):
-        app.callback(Output(field, "options"), Input(field, "search_value"), Input("path-a", "value"),
-                     Input("path-b", "value"), State(field, "value"))(choices)
+    @app.callback(Output("path-start", "options"), Input("path-start", "search_value"), Input("path-a", "value"),
+                  Input("path-b", "value"), State("path-start", "value"), State("path-domain", "data"))
+    def start_choices(query, a, b, selected, domain):
+        domain = resolve_domain(domain)
+        return choices(query, a, b, selected, domain["primes"] if isinstance(domain, dict) else ())
+
+    @app.callback(Output("path-end", "options"), Input("path-end", "search_value"), Input("path-a", "value"),
+                  Input("path-b", "value"), Input("path-list", "value", allow_optional=True),
+                  State("path-end", "value"), State("path-domain", "data"))
+    def end_choices(query, a, b, name, selected, domain):
+        domain = resolve_domain(domain)
+        words = domain["lists"].get(name, ()) if isinstance(domain, dict) and isinstance(name, str) else ()
+        return choices(query, a, b, selected, words)
+
+    @app.callback(Input("path-list", "value"), State("path-domain", "data"), prevent_initial_call=True)
+    def switch_list(name, domain):
+        domain = resolve_domain(domain)
+        if isinstance(domain, dict) and isinstance(name, str) and name in domain["lists"]:
+            set_props("path-end", {"value": domain["lists"][name][:2]})
+
     app.callback(Output("path-results", "children"), Input("path-a", "value"),
                  Input("path-b", "value"), Input("path-start", "value"),
                  Input("path-end", "value"))(render)

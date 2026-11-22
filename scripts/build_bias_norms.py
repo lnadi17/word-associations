@@ -8,7 +8,6 @@ import gzip
 import hashlib
 import io
 import json
-import math
 import os
 import sys
 import tempfile
@@ -18,12 +17,11 @@ from zipfile import ZipFile, is_zipfile
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "website"))
 from wordviz.bias_norms import EMOTIONS, STORE
-from wordviz.experiment_data import signed_rank
+from wordviz.norm_statistics import emotion_statistics, valence_statistics
 from wordviz.models import MATRIX_MODELS
 from wordviz.social_domains import DOMAIN_PRIMES
 
@@ -39,75 +37,17 @@ def english_source(path, member):
     return path.read_bytes()
 
 
-def normalize(matrix, order):
-    """Normalize full columns, then full rows, before selecting rated targets."""
-    if not np.isfinite(matrix).all() or (matrix < 0).any():
-        raise ValueError("Activation matrix contains negative or non-finite values")
-    values = np.array(matrix, dtype=float, copy=True)
-    for axis in (0, 1):
-        norms = np.linalg.norm(values, ord=order, axis=axis, keepdims=True)
-        values /= np.where(norms == 0, 1, norms)
-    return values
-
-
-def equal_slopes(x, y):
-    """Gaussian identity-link GLM, intercept included. H0: all prime slopes equal."""
-    n, k = x.shape
-    if n <= k + 1 or k < 2:
-        return None
-    full = np.column_stack((np.ones(n), x))
-    coefficients, _, rank, _ = np.linalg.lstsq(full, y, rcond=None)
-    if rank != k + 1:
-        return None
-    reduced = np.column_stack((np.ones(n), x.sum(axis=1)))
-    common, _, reduced_rank, _ = np.linalg.lstsq(reduced, y, rcond=None)
-    if reduced_rank != 2:
-        return None
-    full_sse = np.square(y - full @ coefficients).sum()
-    reduced_sse = np.square(y - reduced @ common).sum()
-    if full_sse <= 0 or reduced_sse <= 0:
-        return None
-    improvement = max(0.0, reduced_sse - full_sse)
-    # For linear restrictions in a Gaussian model, Wald chi-square = q * partial F.
-    statistic = improvement / (full_sse / (n - rank))
-    return {"n": n, "df": k - 1, "statistic": float(statistic),
-            "p": float(stats.chi2.sf(statistic, k - 1)), "partial_r2": float(improvement / reduced_sse)}
-
-
 def valence_summary(frame, ratings):
-    matrix = normalize(frame.to_numpy(dtype=float), 2)
     aligned = ratings.reindex(frame.index).to_numpy(dtype=float)
-    rated = np.isfinite(aligned)
-    x, y = matrix[rated], aligned[rated]
-    n = len(y)
-    rows = []
-    for j, prime in enumerate(frame.columns):
-        row = dict(prime=prime, n=n, slope=None, p=None, ci_low=None, ci_high=None)
-        if n >= 3 and np.ptp(x[:, j]) > 0 and np.ptp(y) > 0:
-            fit = stats.linregress(x[:, j], y)
-            margin = float(stats.t.ppf(.975, n - 2) * fit.stderr)
-            row.update(slope=float(fit.slope), p=float(fit.pvalue),
-                       ci_low=float(fit.slope - margin), ci_high=float(fit.slope + margin))
-        rows.append(row)
-    return {"rows": rows, "joint": equal_slopes(x, y)}
+    return valence_statistics(frame.to_numpy(dtype=float), frame.columns, aligned)
 
 
 def emotion_summary(frame, memberships):
     pairs = {}
     indices = {emotion: np.flatnonzero(frame.index.isin(words)) for emotion, words in memberships.items()}
     for left, right in combinations(sorted(frame.columns), 2):
-        x = normalize(frame[[left, right]].to_numpy(dtype=float), 1)
-        difference = x[:, 0] - x[:, 1]
-        rows = []
-        for emotion in EMOTIONS:
-            d = difference[indices[emotion]]
-            effect, _ = signed_rank(d.tolist())
-            # Recover the signed z from the shared tie-corrected implementation.
-            # Computing the two-sided p directly avoids cancellation in the upper tail.
-            p = math.erfc(abs(effect) * math.sqrt(len(d) / 2)) if effect is not None else None
-            rows.append({"emotion": emotion, "n": len(d), "nonzero": int(np.count_nonzero(d)),
-                         "effect": effect, "p": p})
-        pairs.setdefault(left, {})[right] = rows
+        pair = frame[[left, right]].to_numpy(dtype=float)
+        pairs.setdefault(left, {})[right] = emotion_statistics(pair, indices)
     return pairs
 
 

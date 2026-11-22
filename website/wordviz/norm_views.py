@@ -6,7 +6,7 @@ from dash import Input, Output, dcc, html
 from .bias_norms import emotion_result, valence_result
 from .experiments import ACCENT, SECONDARY, activation_sources, format_p, graph, result_table, style_figure
 from .models import MATRIX_MODELS
-from .social_domains import DOMAIN_LABELS, DOMAIN_PRIMES
+from .social_domains import key_for, label_for, primes_for, resolve_domain
 
 
 def valence_layout(domain):
@@ -15,14 +15,14 @@ def valence_layout(domain):
 
 
 def emotion_layout(domain):
-    primes = DOMAIN_PRIMES[domain]
+    primes = primes_for(domain)
     fields = []
     for i, label in enumerate(("First prime", "Comparison prime")):
         control_id = ("emotion-left", "emotion-right")[i]
         fields.append(html.Div([
             html.Label(label, htmlFor=control_id),
             dcc.Dropdown(id=control_id, options=list(primes), value=primes[i], clearable=False,
-                         persistence=domain, persistence_type="memory"),
+                         persistence=key_for(domain), persistence_type="memory"),
         ], className="field"))
     return html.Div([dcc.Store(id="emotion-domain", data=domain), html.Div(fields, className="controls"),
                      dcc.Loading(html.Div(id="emotion-results"))])
@@ -82,7 +82,8 @@ def comparison_models(a, b):
 
 
 def valence_view(domain, a, b):
-    if a == b or a not in MATRIX_MODELS or domain not in DOMAIN_LABELS:
+    domain = resolve_domain(domain)
+    if a == b or a not in MATRIX_MODELS or domain is None:
         return html.P("Choose a network and a different comparison network, or clear the comparison.", role="status")
     results = {m: valence_result(domain, m) for m in comparison_models(a, b)}
     rows, joint_rows, notes = [], [], []
@@ -99,7 +100,7 @@ def valence_view(domain, a, b):
     scope = "Figures 10–11 method" if domain in ("religion", "ethnicity", "orientation") else "Exploratory application"
     return html.Section([
         html.H2("Activation and word valence"),
-        html.P(f"{scope} · {DOMAIN_LABELS[domain]}. A positive slope means words reached more strongly by that prime tend to have higher human pleasantness ratings. Whiskers show 95% confidence intervals."),
+        html.P(f"{scope} · {label_for(domain)}. A positive slope means words reached more strongly by that prime tend to have higher human pleasantness ratings. Whiskers show 95% confidence intervals."),
         *notes, norm_chart(results, "prime", "Prime", "slope", "Valence slope"),
         html.H3("Do slopes differ across primes?"),
         html.P("The joint Wald test compares the prime coefficients in one model of word valence. Partial R² measures the additional variation explained by allowing these coefficients to differ."),
@@ -108,16 +109,18 @@ def valence_view(domain, a, b):
         html.Details([html.Summary("Per-prime statistics"), result_table(
             ["Network", "Prime", "Rated words", "Slope", "95% lower", "95% upper", "p"], rows,
             label="Valence coefficients and intervals")]),
-        html.P("Each network uses its available rated words. Activation is L2-normalized by column and then by row over the domain’s primes.", className="source-note"),
+        html.P("The fit uses every graph word with a valence rating. Activation is L2-normalized by column "
+               "and then by row over the domain’s available primes.", className="source-note"),
         activation_sources(domain, list(results)),
         references("valence"),
     ], className="panel")
 
 
 def emotion_view(domain, a, b, left, right):
-    if a == b or a not in MATRIX_MODELS or domain not in DOMAIN_LABELS:
+    domain = resolve_domain(domain)
+    if a == b or a not in MATRIX_MODELS or domain is None:
         return html.P("Choose a network and a different comparison network, or clear the comparison.", role="status")
-    if left == right or any(p not in DOMAIN_PRIMES[domain] for p in (left, right)):
+    if left == right or any(p not in primes_for(domain) for p in (left, right)):
         return html.P("Select two different primes from this domain.", role="status")
     results = {m: emotion_result(domain, m, left, right) for m in comparison_models(a, b)}
     rows, notes = [], []
@@ -130,12 +133,14 @@ def emotion_view(domain, a, b, left, right):
     scope = "Figure 12 method" if domain == "politics" else "Exploratory application"
     return html.Section([
         html.H2("Activation by emotion word set"),
-        html.P(f"{scope} · {DOMAIN_LABELS[domain]}. Positive effects mean words in a set received stronger activation from {left}. Negative effects favor {right}."),
+        html.P(f"{scope} · {label_for(domain)}. Positive effects mean words in a set received stronger activation from {left}. Negative effects favor {right}."),
         *notes, norm_chart(results, "emotion", "Emotion word set", "effect", "Signed-rank effect (z/√N)"),
         html.Details([html.Summary("Paired test statistics"), result_table(
             ["Network", "Emotion", "Matched words", "Nonzero pairs", "Effect", "Two-sided p"], rows,
             label="Emotion word set tests")]),
-        html.P("Each pair is L1-normalized by column and then by row across the two primes. Each Wilcoxon test compares the primes on the same words within a network. Coverage can differ across networks, and a word can belong to several emotion sets.", className="source-note"),
+        html.P("Each pair is L1-normalized by column and then by row across the two primes. Each Wilcoxon "
+               "test uses all graph words in its NRC emotion set. Coverage can differ across networks, "
+               "and a word can belong to several emotion sets.", className="source-note"),
         activation_sources(domain, list(results)),
         references("emotion"),
     ], className="panel")

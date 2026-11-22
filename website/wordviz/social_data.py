@@ -1,4 +1,4 @@
-"""Read precomputed social-prime activations; the web server never simulates a graph."""
+"""Look up published activations and evaluate user-defined prime sets."""
 import json
 import sqlite3
 import struct
@@ -26,12 +26,18 @@ def _metadata(model):
 
 
 def domain_info(domain, model):
+    if isinstance(domain, dict):
+        from .custom_activation import custom_info
+        return custom_info(domain["primes"], model)
     return _metadata(model)["domains"][domain]
 
 
 def domain_values(domain, words, models):
     """L2-normalized over all nodes then the available primes of the complete domain."""
     models = list(dict.fromkeys(models))
+    if isinstance(domain, dict):
+        from .custom_activation import custom_values
+        return custom_values(domain["primes"], words, models)
     if domain == "gender":
         values = genders(words)
         return {model: values[model] for model in models}
@@ -57,7 +63,7 @@ def domain_suggest(domain, prefix, models, limit=35):
     if domain == "gender":
         return suggest_targets(prefix, models, limit)
     prefix = (prefix or "").strip().casefold()
-    if domain not in DOMAIN_PRIMES or not prefix or not models:
+    if (not isinstance(domain, dict) and domain not in DOMAIN_PRIMES) or not prefix or not models:
         return []
     found = set()
     for model in set(models):

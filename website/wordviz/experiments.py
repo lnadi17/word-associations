@@ -10,7 +10,7 @@ from .experiment_data import (
     DEFAULT_PAIRS, EXACT_SIGN_RANK_LIMIT, MODELS, ldt_stats, metadata, signed_rank, two_sided_signed_rank,
 )
 from .social_data import domain_info, domain_suggest, domain_values
-from .social_domains import DOMAIN_LABELS, DOMAIN_PRIMES
+from .social_domains import DOMAIN_PRIMES, key_for, label_for, primes_for, resolve_domain
 from .target_presets import TARGET_PRESETS
 
 ACCENT = "#17735f"
@@ -172,7 +172,7 @@ def render_ldt(a, b, target_index):
 def initial_primes(domain):
     if domain == "gender":
         return [left for left, _ in DEFAULT_PAIRS] + [right for _, right in DEFAULT_PAIRS]
-    return list(DOMAIN_PRIMES[domain])
+    return list(primes_for(domain))
 
 
 def target_field(label, words, index, persistence):
@@ -181,15 +181,29 @@ def target_field(label, words, index, persistence):
                                      placeholder="Search target words"), persistence=persistence)
 
 
-def study_target_editor(domain, name):
+def preset_words(domain, name):
+    if not isinstance(name, str):
+        return ()
+    if isinstance(domain, dict):
+        return domain["lists"].get(name, ())
     preset = TARGET_PRESETS.get(domain, {}).get(name)
-    if preset is None:
+    return preset.words if preset else ()
+
+
+def study_target_editor(domain, name):
+    domain = resolve_domain(domain)
+    words = preset_words(domain, name)
+    if not words:
         return html.P("Choose a target-word preset.", role="status")
-    persistence = f"{domain}/{name}"
+    persistence = f"{key_for(domain)}/{name}"
+    if isinstance(domain, dict):
+        note = f"Saved word list from {domain['name']}. Edit the domain to change its saved words."
+    else:
+        study = TARGET_PRESETS[domain][name].study
+        note = [study.context, " ", html.A(study.citation, href=study.url)]
     return html.Div([
-        target_field("Target words", preset.words, 0, persistence),
-        html.P([preset.study.context, " ", html.A(preset.study.citation, href=preset.study.url)],
-               className="source-note"),
+        target_field("Target words", words, 0, persistence),
+        html.P(note, className="source-note"),
         html.P(id="target-edits", className="source-note", role="status"),
         html.Button("Restore preset words", id="target-reset", n_clicks=0),
     ], key=persistence)
@@ -197,6 +211,8 @@ def study_target_editor(domain, name):
 
 def stimulus_editor(method, domain):
     gender = domain == "gender"
+    custom = isinstance(domain, dict)
+    persistence = key_for(domain)
     fields = []
     if gender:
         fields.extend(target_field(label, words, i, domain)
@@ -204,25 +220,27 @@ def stimulus_editor(method, domain):
     primes = initial_primes(domain)
     if method == "heat":
         fields.append(field("Primes", dcc.Dropdown(id="heat-primes", options=primes,
-                            value=primes, multi=True), persistence=domain))
+                            value=primes, multi=True), persistence=persistence))
     elif gender:
         fields.append(field("Prime pairs (first/second)", dcc.Textarea(id="effect-pairs",
                             value=PRIME_TEXT, rows=2, style={"width": "100%"}), persistence=domain))
     else:
-        for key, label in (("left", "First prime"), ("right", "Second prime")):
+        for i, (key, label) in enumerate((("left", "First prime"), ("right", "Second prime"))):
             fields.append(field(label, dcc.Dropdown(id=f"effect-{key}", options=primes,
-                                placeholder="Choose a prime"), persistence=domain))
+                                value=primes[i] if custom else None,
+                                placeholder="Choose a prime"), persistence=persistence))
     if gender:
         fields.append(html.Button("Restore paper preset", id=f"{method}-reset", n_clicks=0))
         note = ("Enter ordered prime pairs as first/second, separated by commas."
                 if method == "effect" else "Choose which saved prime columns to display.")
         return html.Details([html.Summary("Edit primes and targets"), html.P(note),
                              html.Div(fields, className="controls")], className="panel")
-    names = list(TARGET_PRESETS[domain])
+    names = list(domain["lists"] if custom else TARGET_PRESETS[domain])
     return html.Section([
         html.H3("Primes and targets"),
-        html.Div([field("Target-word preset", dcc.Dropdown(id="target-preset", options=names,
-                        value=names[0], clearable=False, searchable=False), persistence=domain),
+        html.Div([field("Saved word list" if custom else "Target-word preset",
+                        dcc.Dropdown(id="target-preset", options=names,
+                        value=names[0], clearable=False, searchable=False), persistence=persistence),
                   *fields], className="controls study-primes"),
         html.Div(id="target-editor"),
     ], className="panel")
@@ -234,7 +252,7 @@ def activation_layout(method, domain):
         dcc.Store(id="target-domain", data=domain),
         stimulus_editor(method, domain),
         dcc.Loading(html.Div(id=f"{method}-results")),
-    ], key=f"{method}-{domain}")
+    ], key=f"{method}-{key_for(domain)}")
 
 
 def priming_layout(domain):
@@ -346,7 +364,7 @@ def heatmap(model, groups, primes, values, labels=None, missing_primes=()):
 
 
 def selection_problem(domain, a, b, groups):
-    if domain not in DOMAIN_PRIMES or a not in MODELS or (b and b not in MODELS):
+    if domain is None or a not in MODELS or (b and b not in MODELS):
         return "Choose a domain and a network."
     if a == b:
         return "Choose a different comparison network, or clear Compare with."
@@ -427,6 +445,7 @@ def contrast_results(models, targets, left, right, values):
 
 
 def render_effect(domain, a, b, first, second, pair_text, left, right):
+    domain = resolve_domain(domain)
     groups = selected_groups(domain, first, second)
     problem = selection_problem(domain, a, b, groups)
     if problem:
@@ -443,7 +462,7 @@ def render_effect(domain, a, b, first, second, pair_text, left, right):
         body = [*gender_effect(models, groups, values, pairs, canonical),
                 html.A("Paper Figure 3 and methods", href=BIAS_PAPER)]
     else:
-        if left not in DOMAIN_PRIMES[domain] or right not in DOMAIN_PRIMES[domain] or left == right:
+        if left not in primes_for(domain) or right not in primes_for(domain) or left == right:
             return html.P("Choose two different primes to compare their activation across the selected targets.",
                           className="panel", role="status")
         absent = []
@@ -457,16 +476,17 @@ def render_effect(domain, a, b, first, second, pair_text, left, right):
                           className="panel", role="status")
         values = domain_values(domain, groups[0], models)
         body = [html.H3(f"{left} versus {right}"), *contrast_results(models, groups[0], left, right, values)]
-    return html.Section([html.H2(f"{DOMAIN_LABELS[domain]} priming effects"),
+    return html.Section([html.H2(f"{label_for(domain)} priming effects"),
                          *body, activation_sources(domain, models)], className="panel")
 
 
 def render_heatmaps(domain, a, b, first, second, selected_primes):
+    domain = resolve_domain(domain)
     groups = selected_groups(domain, first, second)
     problem = selection_problem(domain, a, b, groups)
     if problem:
         return html.P(problem, role="status")
-    primes = list(dict.fromkeys(p for p in selected_primes or [] if p in DOMAIN_PRIMES[domain]))
+    primes = list(dict.fromkeys(p for p in selected_primes or [] if p in primes_for(domain)))
     if not primes:
         return html.P("Select at least one prime for the heatmap.", className="panel", role="status")
     models = selected_models(a, b)
@@ -493,7 +513,7 @@ def register_stimuli(app):
         @app.callback(Output(target, "options"), Input(target, "search_value"), Input("social-a", "value"),
                       Input("social-b", "value"), Input(target, "value"), State("target-domain", "data"))
         def suggestions(query, a, b, chosen, domain):
-            matches = domain_suggest(domain, query, selected_models(a, b))
+            matches = domain_suggest(resolve_domain(domain), query, selected_models(a, b))
             return list(dict.fromkeys([*(chosen or []), *matches]))
 
     app.callback(Output("target-editor", "children"), Input("target-domain", "data"),
@@ -502,17 +522,20 @@ def register_stimuli(app):
     @app.callback(Output("target-edits", "children"), Input("bias-targets-0", "value"),
                   State("target-domain", "data"), State("target-preset", "value"))
     def describe_target_edits(words, domain, name):
-        preset = TARGET_PRESETS.get(domain, {}).get(name)
-        if preset and set(words or []) != set(preset.words):
+        domain = resolve_domain(domain)
+        original = preset_words(domain, name)
+        if original and set(words or []) != set(original):
+            if isinstance(domain, dict):
+                return "Showing the edited selection for this visit."
             return "Custom selection. The study link documents the original preset words."
         return None
 
     @app.callback(Input("target-reset", "n_clicks"), State("target-domain", "data"),
                   State("target-preset", "value"), prevent_initial_call=True)
     def restore_study_words(clicks, domain, name):
-        preset = TARGET_PRESETS.get(domain, {}).get(name)
-        if clicks and preset:
-            set_props("bias-targets-0", {"value": list(preset.words)})
+        words = preset_words(resolve_domain(domain), name)
+        if clicks and words:
+            set_props("bias-targets-0", {"value": list(words)})
 
     def register_gender_reset(method):
         @app.callback(Input(f"{method}-reset", "n_clicks"), prevent_initial_call=True)
@@ -537,11 +560,11 @@ def register(app: Dash):
 
     register_stimuli(app)
     app.callback(Output("effect-results", "children"), Input("effect-domain", "data"),
-                 Input("social-a", "value"), Input("social-b", "value"), Input("bias-targets-0", "value"),
+                 Input("social-a", "value"), Input("social-b", "value"), Input("bias-targets-0", "value", allow_optional=True),
                  Input("bias-targets-1", "value", allow_optional=True),
                  Input("effect-pairs", "value", allow_optional=True),
                  Input("effect-left", "value", allow_optional=True),
                  Input("effect-right", "value", allow_optional=True))(render_effect)
     app.callback(Output("heat-results", "children"), Input("heat-domain", "data"),
-                 Input("social-a", "value"), Input("social-b", "value"), Input("bias-targets-0", "value"),
+                 Input("social-a", "value"), Input("social-b", "value"), Input("bias-targets-0", "value", allow_optional=True),
                  Input("bias-targets-1", "value", allow_optional=True), Input("heat-primes", "value"))(render_heatmaps)

@@ -14,6 +14,12 @@ python3.13 -m venv .venv
 
 Open [the local explorer](http://127.0.0.1:8050/). Set `PORT` to choose a different port.
 
+## Custom social domains
+
+On **Implicit bias**, open **Social domain → Add a custom domain…**. Name the domain, enter 2–12 prime words and add one or more named target lists (up to 100 words per list). Paste words separated by commas or new lines. You can start with primes from a published domain. Choose **Save and use domain** to analyze the definition or select it later from the same browser. Use **Edit** under the domain selector to update or delete it. Clearing this site's browser storage removes saved definitions.
+
+Priming effects and Heatmaps use the selected target list. Association paths lets you choose a saved list and starts with up to two primes and two targets. Word valence uses all NRC-rated words in the network, and Emotion word sets uses the eight NRC categories for the selected prime pair. Graph coverage is reported for each network. Custom domains use the current weighted graph, including when they reuse a published gender prime.
+
 ## Vercel deployment
 
 Use **website** as the Vercel project’s Root Directory for a Git deployment, or submit the contents of this directory as the deployment root. The Flask entry point is `app.py:app`. The build installs the web dependencies and runs `python prepare_static.py` to verify the research stores and refresh the pinned Plotly browser bundle in `public/vendor/`. Include the static assets and `wordviz/resources/` in the deployment source. Vercel serves the JavaScript and stylesheet from its CDN, while the function reads the research data. The application requires no credentials, external database, or model API.
@@ -27,6 +33,7 @@ To verify a preview, open the three page URLs directly. In Explore, compare *cat
 | Explorer | `resources/explore/` under `wordviz/` | Counts pooled over the three cleaned response slots. Forward follows cue to response. Backward follows response to source cue. Merged assigns each neighbor the maximum reciprocal count. Percentages use the sum of weights in the chosen direction. |
 | Lexical decision and gender priming | `resources/experiments.sqlite` | Fully normalized saved-matrix values for the 50 LDT triplets and all available gender-target rows. The UI performs signed-rank tests on the displayed experiment. Table 6 includes the Spearman correlation with measured RT. |
 | Social priming effects and heatmaps | `resources/social/*.sqlite` | For religion, ethnicity, sexual orientation and political party, spread activation from each prime on the local weighted graph. Normalize the full domain matrix by column and then by row (L2). The user can edit targets and choose a contrast. |
+| Custom domains | `resources/social_weights/` and `resources/paths/` | Propagate activation from any available graph node using the same weighted transition and step count as the published social models. Cache each computed prime column and normalize across the primes in the saved definition. |
 | Word valence and emotion word sets | `resources/social_norms.json.gz` | Aggregate analyses across six networks. Valence uses rated words from NRC VAD v1.0 with L2-normalized domain activations. Emotion uses eight NRC EmoLex v0.92 word sets with L1-normalized activations for the selected prime pair. Counts describe the covered vocabulary of each network. |
 | Association paths | `resources/paths/` | Unweighted shortest-hop paths on each filtered undirected network, with NRC VAD v2.1 word valence. This uses the version of the graph held in the repository, which can differ from the graph used for the archived activation matrices. |
 
@@ -51,12 +58,13 @@ python scripts/build_experiment_store.py
 python scripts/build_path_store.py
 ```
 
-To refresh the social analyses, use the research environment with python-igraph, SciPy, pandas and NumPy. The first command also saves raw activation matrices to a scratch directory for the second command. Supply the English NRC VAD v1.0 and EmoLex v0.92 source files from the authors. Only the aggregate norm results are included in the website. [NRC VAD](https://saifmohammad.com/WebPages/nrc-vad.html) · [NRC Emotion Lexicon](https://saifmohammad.com/WebPages/NRC-Emotion-Lexicon.htm)
+To refresh the social analyses, use the research environment with python-igraph, SciPy, pandas and NumPy. The first command saves raw activation matrices for the aggregate norm analysis. The last command validates the path topology against the source graph and packages its edge weights. The custom norm views use verified copies of the same English NRC VAD v1.0 and EmoLex v0.92 inputs on the server. The build downloads these from the authors. For an offline build, run `website/prepare_static.py --vad /path/to/NRC-VAD-Lexicon.zip --emolex /path/to/NRC-Emotion-Lexicon-v0.92.zip` with the website Python environment. The lexicons stay out of Git and public assets. [NRC VAD](https://saifmohammad.com/WebPages/nrc-vad.html) · [NRC Emotion Lexicon](https://saifmohammad.com/WebPages/NRC-Emotion-Lexicon.htm)
 
 ```sh
 python scripts/build_social_store.py --raw-output /tmp/word-associations-social
 python scripts/build_bias_norms.py --matrix-dir /tmp/word-associations-social \
-  --vad /path/to/NRC-VAD-Lexicon.zip --emolex /path/to/NRC-Emotion-Lexicon.zip
+  --vad /path/to/NRC-VAD-Lexicon.zip --emolex /path/to/NRC-Emotion-Lexicon-v0.92.zip
+python scripts/build_custom_weights.py
 ```
 
 Run the regression suite from the repository root using a Python with the web dependencies:
