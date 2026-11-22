@@ -186,7 +186,7 @@ def register(app):
                   State("custom-domains", "data"), State("custom-last-domain", "data"),
                   State("social-domain", "value"), State("custom-ready", "data"))
     def domain_options(_timestamp, action, open_editor, data, last, current, ready):
-        if ctx.triggered_id == "custom-summary":
+        if set(ctx.triggered_prop_ids) == {"custom-summary.n_clicks"}:
             if open_editor and current in DOMAIN_LABELS:
                 return no_update, NEW_DOMAIN, no_update
             raise PreventUpdate
