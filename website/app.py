@@ -1,10 +1,12 @@
 """Flask entry point for Vercel and the local Dash development server."""
 
 import os
+from functools import lru_cache
+from importlib.resources import files
 from pathlib import Path
 
 from dash import Dash, Input, Output, State, dcc, html
-from flask import Flask
+from flask import Flask, Response, request
 
 from wordviz import experiments, explore, norm_views, paths
 from wordviz.social_domains import DOMAIN_LABELS
@@ -40,6 +42,26 @@ def plotly_js():
     from plotly import __file__ as plotly_file
 
     return send_file(Path(plotly_file).parent / "package_data" / "plotly.min.js")
+
+
+@lru_cache(maxsize=1)
+def mounted_graph_bundle():
+    """Backport a missing mounted-element check to the pinned Dash 3.3.0 graph."""
+    source = files("dash.dcc").joinpath("async-graph.js").read_text(encoding="utf-8")
+    start = "d=this.gd.current;"
+    transform = "a=e._dashprivate_transformFigure(a,d)"
+    if source.count(start + transform) != 1:
+        raise RuntimeError("Review the graph unmount guard after updating Dash")
+    # plot() also runs from a promise queue. After navigation, its ref can
+    # already be null before the first transform or classList access.
+    return source.replace(start + transform, start + "if (!d) return Promise.resolve();" + transform)
+
+
+@app.get("/_dash-component-suites/dash/dcc/async-graph.js")
+def graph_component():
+    response = Response(mounted_graph_bundle(), mimetype="text/javascript")
+    response.add_etag()
+    return response.make_conditional(request)
 
 
 PAGES = {
