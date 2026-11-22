@@ -100,12 +100,30 @@ class ArchivedExperiments(unittest.TestCase):
         self.assertEqual(rows[0][5], rows[1][5])
 
     def test_new_domain_has_no_implicit_reference_prime(self):
-        from wordviz.experiments import EXAMPLE_TARGETS, render_effect
-        from wordviz.social_domains import DOMAIN_PRIMES
+        from wordviz.experiments import render_effect
+        from wordviz.target_presets import TARGET_PRESETS
 
-        for domain in set(DOMAIN_PRIMES) - {"gender"}:
-            result = render_effect(domain, "Humans", None, EXAMPLE_TARGETS, [], None, None, None)
+        for domain, presets in TARGET_PRESETS.items():
+            words = next(iter(presets.values())).words
+            result = render_effect(domain, "Humans", None, words, [], None, None, None)
             self.assertIn("Choose two different primes", result.children)
+
+    def test_published_target_lists_work_in_each_network(self):
+        from wordviz.social_data import domain_values
+        from wordviz.social_domains import DOMAIN_PRIMES
+        from wordviz.target_presets import TARGET_PRESETS
+
+        self.assertEqual(set(TARGET_PRESETS), set(DOMAIN_PRIMES) - {"gender"})
+        for domain, presets in TARGET_PRESETS.items():
+            words = {word for preset in presets.values() for word in preset.words}
+            rows = domain_values(domain, list(words), MODELS)
+            for name, preset in presets.items():
+                with self.subTest(domain=domain, preset=name):
+                    self.assertTrue(preset.study.url.startswith("https://"))
+                    self.assertTrue(preset.study.context)
+                    self.assertEqual(len(set(preset.words)), len(preset.words))
+                    for model in MODELS:
+                        self.assertTrue(set(preset.words).issubset(rows[model]), model)
 
     def test_heatmap_separates_missing_data_and_observed_zero(self):
         from wordviz.experiments import heatmap
