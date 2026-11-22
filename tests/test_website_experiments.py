@@ -73,6 +73,17 @@ class ArchivedExperiments(unittest.TestCase):
         coverage = next(child for child in effect_panel.children if child.__class__.__name__ == "Ul")
         self.assertIn("23/25", coverage.children[0].children)
 
+    def test_effect_charts_reserve_the_figure_height_in_the_grid(self):
+        from wordviz.experiments import gender_effect
+
+        groups = [["kind"], ["strong"]]
+        _, panels, *_ = gender_effect(["Humans"], groups, genders(groups[0] + groups[1]),
+                                      [("woman", "man")], canonical=False)
+        for panel in panels.children:
+            chart = panel.children[1]
+            self.assertTrue(chart.responsive)
+            self.assertEqual(chart.style["height"], f"{chart.figure.layout.height}px")
+
 
 if __name__ == "__main__":
     unittest.main()

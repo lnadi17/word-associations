@@ -45,6 +45,7 @@ p { color: var(--muted); }
 .controls { display: flex; gap: 14px 20px; flex-wrap: wrap; align-items: end; margin-bottom: 18px; }
 .panel .controls { border: 0; border-bottom: 1px solid var(--soft-line); border-radius: 0; padding: 16px 0; }
 .field { flex: 1 1 170px; min-width: 0; }
+.field:has(#ldt-triplet) { flex: 2 1 275px; }
 .field > label, .field-label { display: block; color: var(--muted); font-size: 13px; font-weight: 650; margin-bottom: 6px; }
 input[type="text"], input[type="search"], input[type="number"], select, textarea {
   background: white; color: var(--ink); border: 1px solid #b8c7bc; border-radius: 6px; padding: 7px 10px; max-width: 100%;
@@ -54,7 +55,12 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
 .Select--multi .Select-value { background-color: var(--mint); color: var(--teal-dark); border-color: #bdcec3; }
 .Select--multi .Select-value-icon { border-right-color: #bdcec3; }
 .Select-menu-outer { z-index: 100; color: var(--ink); }
-.Select.is-focused:not(.is-open) > .Select-control { border-color: var(--teal); box-shadow: 0 0 0 2px #d4e8dc; }
+.workspace .VirtualizedSelectOption { line-height: 1.2; overflow-wrap: anywhere; }
+.workspace .Select:focus-within > .Select-control { border-color: var(--teal); box-shadow: 0 0 0 2px var(--teal); }
+.Select .Select-input > input:focus-visible { outline: none; }
+@media (forced-colors: active) {
+  .workspace .Select:focus-within > .Select-control { outline: 2px solid Highlight; }
+}
 .workspace button { border: 1px solid var(--teal); border-radius: 6px; padding: 7px 13px; background: var(--teal); color: white; cursor: pointer; font-weight: 550; }
 .workspace button:hover { background: var(--teal-dark); }
 .workspace button:disabled { opacity: .6; cursor: default; }
@@ -83,7 +89,8 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
 .explorer-layout .explorer-primary .field, .explorer-layout .explorer-modes .field { flex: auto; }
 .panel .explorer-primary { padding-top: 0; }
 .panel .explorer-modes { padding-bottom: 0; border: none; margin-bottom: 0; }
-.explorer-filters .field { flex: 1 1 100px; }
+.explorer-filters .field { flex: 2 1 170px; }
+.explorer-filters .field:last-child { flex: 1 1 70px; }
 .panel .explorer-filters { padding-top: 0; }
 .explorer-network, .path-model { overflow: hidden; }
 .path-pair { border-top: 1px solid var(--soft-line); padding: 18px 0 5px; }
@@ -91,7 +98,6 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
 .explorer-networks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); gap: 12px; }
 .explorer-network { min-width: 0; border: 1px solid var(--soft-line); border-radius: 8px; }
 .explorer-networks h3 { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 14px; font-size: 14px; border-bottom: 1px solid var(--soft-line); }
-.explorer-network .dash-graph { height: clamp(300px, 34vw, 430px); }
 .series-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 12px 0 8px; padding: 0; }
 .series-legend li { display: flex; align-items: center; gap: 7px; color: var(--ink); font-size: 13px; }
 .series-swatch { display: inline-block; width: 11px; height: 7px; border-radius: 2px; flex-shrink: 0; }
@@ -128,16 +134,10 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
   .explorer-modes .field > label { min-width: 74px; margin: 0; }
   .panel .explorer-primary, .panel .explorer-filters { margin-bottom: 10px; padding-bottom: 10px; }
   .panel .explorer-modes { padding-top: 0; }
-  .explorer-filters .field { flex-basis: 85px; }
 }
 @media (max-width: 460px) {
   .masthead-inner { flex-direction: column; align-items: start; }
   .masthead .nav-link:first-child { margin-left: -8px; }
   .explorer-layout .segmented label { padding: 7px 6px; font-size: 12px; }
   .overlap-counts > div { padding: 8px; }
-  .explorer-filters .field:first-child { flex-basis: calc(48% - 8px); }
-  .explorer-filters .field:nth-child(2) { flex-basis: calc(52% - 8px); }
-  .explorer-filters .field:last-child { display: flex; align-items: center; gap: 10px; }
-  .explorer-filters .field:last-child label { margin: 0; }
-  .explorer-filters .field:last-child > div { width: 74px; }
 }

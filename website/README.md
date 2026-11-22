@@ -43,3 +43,11 @@ Run the regression suite from the repository root using a Python with the web de
 ```sh
 python -m unittest discover -s tests -p 'test_website*.py'
 ```
+
+The browser regression checks measure the visible plotting area and exercise dropdowns at desktop and mobile widths. With the app running, use a test environment with Playwright installed:
+
+```sh
+python -m playwright install chromium webkit
+python tests/browser_layout.py http://127.0.0.1:8050
+python tests/browser_layout.py http://127.0.0.1:8050 --browser webkit
+```
