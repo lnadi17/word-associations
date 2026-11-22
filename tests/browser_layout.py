@@ -18,6 +18,12 @@ def check_width(page):
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
 
 
+def choose(page, control, option):
+    dropdown = page.locator("#" + control)
+    dropdown.locator(".Select-control").click()
+    dropdown.locator(".Select-menu-outer").get_by_text(option, exact=True).click()
+
+
 def check_page(page, url):
     page.goto(url)
     check_chart(page.locator(".bar-scroll .dash-graph"), ".barlayer .point", 300)
@@ -49,22 +55,37 @@ def check_page(page, url):
     check_width(page)
 
     page.get_by_role("link", name="Implicit bias").click()
-    expect(page.locator("#bias-results .heatmaplayer image").first).to_be_visible()
-    compare = page.locator("#bias-b").get_by_role("combobox", name="Compare with", exact=True)
-    page.get_by_text("Compare with", exact=True).click()
-    compare.fill("GPT-5 mini")
-    page.locator("#bias-b .Select-menu-outer").get_by_text("GPT-5 mini", exact=True).click()
-    heatmaps = page.locator("#bias-results .panel").nth(1).locator(".dash-graph")
-    expect(heatmaps).to_have_count(2)
-    effects = page.locator("#bias-results .panel").first.locator(".dash-graph")
+    effects = page.locator("#effect-results .dash-graph")
     expect(effects).to_have_count(2)
     for effect in effects.all():
         check_chart(effect, ".barlayer .point path", 320)
+    choose(page, "social-b", "GPT-5 mini")
+    choose(page, "social-domain", "Religion")
+    choose(page, "effect-left", "christian")
+    choose(page, "effect-right", "muslim")
+    expect(page.locator("#effect-results")).to_contain_text("christian versus muslim")
+    expect(page.locator("#effect-results table tbody tr")).to_have_count(2)
+
+    methods = page.locator("#bias-view")
+    methods.get_by_text("Heatmaps", exact=True).click()
+    heatmaps = page.locator("#heat-results .dash-graph")
+    expect(heatmaps).to_have_count(2)
     for heatmap in heatmaps.all():
         check_chart(heatmap, ".heatmaplayer image", 320)
     check_width(page)
 
-    page.get_by_text("Association paths", exact=True).click()
+    methods.get_by_text("Word valence", exact=True).click()
+    check_chart(page.locator("#valence-results .dash-graph"), ".scatterlayer .point", 320)
+    expect(page.locator("#valence-results table").first.locator("tbody tr")).to_have_count(2)
+    choose(page, "social-domain", "Political party (US)")
+    methods.get_by_text("Emotion word sets", exact=True).click()
+    check_chart(page.locator("#emotion-results .dash-graph"), ".scatterlayer .point", 320)
+    expect(page.locator("#emotion-results table tbody tr")).to_have_count(16)
+    check_width(page)
+
+    methods.get_by_text("Association paths", exact=True).click()
+    expect(page.locator("#path-start")).to_contain_text("democrat")
+    expect(page.locator("#path-b")).to_contain_text("GPT-5 mini")
     check_chart(page.locator("#path-results .dash-graph").first, ".scatterlayer .point", 185)
     check_width(page)
 

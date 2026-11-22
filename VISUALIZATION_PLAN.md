@@ -1,5 +1,7 @@
 # Word association explorer implementation plan
 
+The initial release plan below records the original three-page scope. The subsequent social-domain release added Figures 10–12 methods and split the implicit associations page into five views. The [website guide](website/README.md) documents the shipped analyses, data sources and refresh commands.
+
 Build a Python website with three pages: **Explore associations**, **Lexical decision**, and **Implicit bias**. Give each page a primary model selector and an optional comparison model. Preserve the selected words or stimuli when switching models. Ten datasets support directional association browsing and graph queries. Six have saved spreading-activation results. The model selector should show which views are available for each dataset.
 
 ## 1. Choose the data source for each question

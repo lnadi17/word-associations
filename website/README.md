@@ -26,9 +26,13 @@ To verify a preview, open the three page URLs directly. In Explore, compare *cat
 |---|---|---|
 | Explorer | `resources/explore/` under `wordviz/` | Counts pooled over the three cleaned response slots. Forward follows cue to response. Backward follows response to source cue. Merged assigns each neighbor the maximum reciprocal count. Percentages use the sum of weights in the chosen direction. |
 | Lexical decision and gender priming | `resources/experiments.sqlite` | Fully normalized saved-matrix values for the 50 LDT triplets and all available gender-target rows. The UI performs signed-rank tests on the displayed experiment. Table 6 includes the Spearman correlation with measured RT. |
+| Social priming effects and heatmaps | `resources/social/*.sqlite` | For religion, ethnicity, sexual orientation and political party, spread activation from each prime on the local weighted graph. Normalize the full domain matrix by column and then by row (L2). The user can edit targets and choose a contrast. |
+| Word valence and emotion word sets | `resources/social_norms.json.gz` | Aggregate analyses across six networks. Valence uses rated words from NRC VAD v1.0 with L2-normalized domain activations. Emotion uses eight NRC EmoLex v0.92 word sets with L1-normalized activations for the selected prime pair. Counts describe the covered vocabulary of each network. |
 | Association paths | `resources/paths/` | Unweighted shortest-hop paths on each filtered undirected network, with NRC VAD v2.1 word valence. This uses the version of the graph held in the repository, which can differ from the graph used for the archived activation matrices. |
 
-Color in the explorer identifies the word/model selection. Path colors encode valence. The bias views cover Figures 3–9. The identity and political-party experiments in Figures 10–12 are deferred.
+The gender priming preset retains the paper’s two trait lists. Other domains offer editable example words for exploring activation. A custom priming contrast answers which prime more strongly activates the selected targets. Its interpretation depends on how those targets were chosen. Word valence implements the approach of Figures 10–11 for religion, ethnicity and sexual orientation. The political-party emotion contrast follows Figure 12. The same methods on other domains are labeled exploratory. Path colors use the local signed NRC VAD v2.1 ratings. [Study methods](https://arxiv.org/html/2510.24488#S2)
+
+The current graph snapshots supply the four new domains. Archived gender matrices supply the gender experiment. The build records the source for each model. Table 2 prints *athiest*; the graph node used here is *atheist*.
 
 To refresh after upstream research data change, run these from the repository root using the **research** environment with pandas, NumPy and SciPy installed and Git LFS data materialized:
 
@@ -36,6 +40,14 @@ To refresh after upstream research data change, run these from the repository ro
 python scripts/build_explorer_store.py
 python scripts/build_experiment_store.py
 python scripts/build_path_store.py
+```
+
+To refresh the social analyses, use the research environment with python-igraph, SciPy, pandas and NumPy. The first command also saves raw activation matrices to a scratch directory for the second command. Supply the English NRC VAD v1.0 and EmoLex v0.92 source files from the authors. Only the aggregate norm results are included in the website. [NRC VAD](https://saifmohammad.com/WebPages/nrc-vad.html) · [NRC Emotion Lexicon](https://saifmohammad.com/WebPages/NRC-Emotion-Lexicon.htm)
+
+```sh
+python scripts/build_social_store.py --raw-output /tmp/word-associations-social
+python scripts/build_bias_norms.py --matrix-dir /tmp/word-associations-social \
+  --vad /path/to/NRC-VAD-Lexicon.zip --emolex /path/to/NRC-Emotion-Lexicon.zip
 ```
 
 Run the regression suite from the repository root using a Python with the web dependencies:
