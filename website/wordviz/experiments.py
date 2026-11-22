@@ -14,10 +14,13 @@ GRID = "#e4e8e5"
 INK = "#20342d"
 GROUPS = ["Female-related targets", "Male-related targets"]
 PRIME_TEXT = ", ".join(f"{left}/{right}" for left, right in DEFAULT_PAIRS)
-GRAPH_CONFIG = {"displaylogo": False, "responsive": True, "modeBarButtonsToRemove": ["lasso2d", "select2d"]}
+GRAPH_CONFIG = {"displaylogo": False, "modeBarButtonsToRemove": ["lasso2d", "select2d"]}
 
 
 def field(label, control):
+    # Dash unmounts the controls when the user switches experiment views.
+    control.persistence = True
+    control.persistence_type = "memory"
     return html.Div([html.Label(label, htmlFor=control.id), control], className="field")
 
 
@@ -44,7 +47,8 @@ def style_figure(fig, height):
 
 
 def graph(fig):
-    return dcc.Graph(figure=fig, config=GRAPH_CONFIG, style={"minWidth": 0})
+    return dcc.Graph(figure=fig, responsive=True, config=GRAPH_CONFIG,
+                     style={"height": f"{fig.layout.height}px", "minWidth": 0})
 
 
 def result_table(headers, rows, selected=(), label="Results"):
@@ -165,9 +169,9 @@ def bias_layout():
         html.Details([
             html.Summary("Edit primes and targets"),
             html.Div([
-                field("Female-related targets", dcc.Dropdown(id="bias-f-targets", options=targets[0],
+                field("Female-related targets", dcc.Dropdown(id="bias-f-targets",
                     value=targets[0], multi=True, placeholder="Search target words")),
-                field("Male-related targets", dcc.Dropdown(id="bias-m-targets", options=targets[1],
+                field("Male-related targets", dcc.Dropdown(id="bias-m-targets",
                     value=targets[1], multi=True, placeholder="Search target words")),
                 field("Heatmap primes", dcc.Dropdown(id="bias-primes", options=metadata("primes"),
                     value=preset_primes, multi=True)),

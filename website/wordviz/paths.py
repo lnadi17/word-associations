@@ -13,6 +13,8 @@ VALENCE_COLORS = [[0, "#ad3f46"], [0.5, "#ecebe4"], [1, "#3266a4"]]
 
 
 def _field(label, component):
+    component.persistence = True
+    component.persistence_type = "memory"
     return html.Div([html.Label(label, htmlFor=component.id), component], className="field")
 
 
@@ -37,10 +39,10 @@ def layout():
             _field("Compare path model", dcc.Dropdown(
                 id="path-b", options=MODEL_OPTIONS, value="haiku", placeholder="Single graph")),
             _field("Starting words", dcc.Dropdown(
-                id="path-start", options=DEFAULT_PRIMES, value=DEFAULT_PRIMES.copy(),
+                id="path-start", value=DEFAULT_PRIMES.copy(),
                 multi=True, placeholder="Search graph nodes")),
             _field("Target words", dcc.Dropdown(
-                id="path-end", options=DEFAULT_TARGETS, value=DEFAULT_TARGETS.copy(),
+                id="path-end", value=DEFAULT_TARGETS.copy(),
                 multi=True, placeholder="Search graph nodes")),
         ], className="controls"),
         html.Ul(legend, className="source-note", **{"aria-label": "Word valence legend"},

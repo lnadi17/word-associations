@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "website"))
 
-from wordviz.explore import _rank
+from wordviz.explore import _rank, membership_options, retained_option
 from wordviz.explore_data import MODELS, neighbors, vocabulary
 
 
@@ -31,6 +31,26 @@ class ExplorerTests(unittest.TestCase):
             with self.subTest(model=model):
                 self.assertIn("cat", vocabulary(model))
                 self.assertTrue(neighbors(model, "cat", "forward").counts)
+
+    def test_dense_graph_has_a_height_and_preserves_full_node_words(self):
+        from wordviz.explore import _graphs
+
+        model = neighbors("humans", "cat", "backward")
+        words = sorted(model.counts, key=len, reverse=True)[:30]
+        panel = _graphs([model], [model.total], words, "backward").children[0]
+        chart = panel.children[1]
+        self.assertIn("px", chart.style["height"])
+        nodes = chart.figure.data[0]
+        self.assertEqual([row[0] for row in nodes.customdata], words)
+        self.assertEqual(len(set(zip(nodes.x, nodes.y))), len(words))
+        self.assertTrue(any(label.endswith("…") for label in nodes.text))
+
+    def test_filter_follows_its_network_when_indices_change(self):
+        previous = membership_options(["cat", "dog"], "humans", "gemma")
+        current = membership_options(["dog"], "humans", "gemma")
+        self.assertEqual(retained_option(current, previous, "shared"), "shared")
+        self.assertEqual(retained_option(current, previous, "only-3"), "only-1")
+        self.assertEqual(retained_option(current, previous, "only-0"), "all")
 
 
 if __name__ == "__main__":

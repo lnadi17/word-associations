@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections import Counter
 from html import escape
-from math import cos, pi, sin
+from math import sqrt
 
 import plotly.graph_objects as go
 from dash import ALL, Input, Output, State, ctx, dcc, html, no_update
@@ -90,6 +90,12 @@ def membership_options(words, a, b):
         options.extend({"label": f"Only {word} · {MODELS[model]}", "value": f"only-{i}"}
                        for i, (model, word) in enumerate(series))
     return options
+
+
+def retained_option(options, previous_options, value):
+    # Profile indices can move when a word or model is removed.
+    label = next((o["label"] for o in previous_options or [] if o["value"] == value), None)
+    return next((o["value"] for o in options if o["label"] == label), options[0]["value"])
 
 
 def _rank(series, totals, membership, order):
@@ -191,10 +197,23 @@ def _bars(series, totals, words):
     ), className="bar-scroll", tabIndex=0, role="region", **{"aria-label": "Connection share bar chart"})])
 
 
+def _node_label(word):
+    return word if len(word) <= 13 else word[:12] + "…"
+
+
 def _graphs(series, totals, words, direction):
-    # Give each displayed associate a fixed coordinate across every comparison panel.
-    positions = {word: (cos(pi / 2 - 2 * pi * i / len(words)), sin(pi / 2 - 2 * pi * i / len(words)))
-                 for i, word in enumerate(words)}
+    # Equal row spacing on each side keeps neighboring labels apart, even at the 30-word limit.
+    half = (len(words) + 1) // 2
+    positions = {}
+    for side, group in ((1, words[:half]), (-1, words[half:])):
+        for row, word in enumerate(group):
+            y = side * (1 - 2 * (row + .5) / len(group))
+            positions[word] = (side * sqrt(1 - y * y), y)
+    labels = {w: _node_label(w) for w in words}
+    # Reserve space outside the axes for the longest displayed label on each side.
+    margins = [min(114, 14 + 8 * max((len(labels[w]) for w in group), default=0))
+               for group in (words[half:], words[:half])]
+    min_height = max(300, 40 + half * 25)
     peak = max((s.counts.get(w, 0) / n for s, n in zip(series, totals) if n for w in words), default=1) or 1
     panels = []
     for i, (s, total) in enumerate(zip(series, totals)):
@@ -210,22 +229,25 @@ def _graphs(series, totals, words, direction):
                                arrowhead=0 if direction == "merged" else 2, arrowsize=1.2,
                                arrowwidth=1 + 2 * weight / peak, standoff=11, startstandoff=10, arrowcolor="#899e96")
         fig.add_scatter(x=[positions[w][0] for w in active], y=[positions[w][1] for w in active],
-                        text=list(map(escape, active)), customdata=[[w, s.counts[w], s.counts[w] / total] for w in active],
+                        text=[escape(labels[w]) for w in active], hovertext=list(map(escape, active)),
+                        customdata=[[w, s.counts[w], s.counts[w] / total] for w in active],
                         mode="markers+text", marker=dict(color=color, size=[10+12*(s.counts[w]/total/peak)**.5 for w in active]),
-                        textposition=["middle right" if positions[w][0] > .15 else
-                                      "middle left" if positions[w][0] < -.15 else "top center" for w in active],
-                        hovertemplate="%{text}<br>%{customdata[1]:,} occurrences · %{customdata[2]:.2%}<extra></extra>")
-        fig.add_scatter(x=[0], y=[0], text=[escape(s.word)], customdata=[[s.word]], mode="markers+text",
+                        textposition=["middle right" if positions[w][0] > 0 else "middle left" for w in active],
+                        cliponaxis=False,
+                        hovertemplate="%{hovertext}<br>%{customdata[1]:,} occurrences · %{customdata[2]:.2%}<extra></extra>")
+        fig.add_scatter(x=[0], y=[0], text=[escape(_node_label(s.word))], hovertext=[escape(s.word)],
+                        customdata=[[s.word]], mode="markers+text", cliponaxis=False,
                         marker=dict(size=21, color="#263e38", symbol="diamond"), textposition="bottom center",
-                        hovertemplate="%{text}<extra>Selected word</extra>")
-        fig.update_layout(height=400, showlegend=False, hovermode="closest", clickmode="event",
-                          margin=dict(l=4, r=4, t=3, b=3), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                          font=dict(family="system-ui, sans-serif", size=12), xaxis=dict(visible=False, range=[-1.5,1.5]),
-                          yaxis=dict(visible=False, range=[-1.25,1.25], scaleanchor="x", scaleratio=1))
+                        hovertemplate="%{hovertext}<extra>Selected word</extra>")
+        fig.update_layout(showlegend=False, hovermode="closest", clickmode="event",
+                          margin=dict(l=margins[0], r=margins[1], t=18, b=18), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                          font=dict(family="system-ui, sans-serif", size=12), xaxis=dict(visible=False, range=[-1.05,1.05]),
+                          yaxis=dict(visible=False, range=[-1,1]))
         panels.append(html.Div([html.H3([
             html.Span(className="series-swatch", style={"backgroundColor": color}), s.label,
         ]), dcc.Graph(id={"type": "ex-network", "index": i},
-            figure=fig, responsive=True, config={"displayModeBar": False, "displaylogo": False})], className="explorer-network"))
+            figure=fig, responsive=True, style={"height": f"clamp({min_height}px, 34vw, 430px)"},
+            config={"displayModeBar": False, "displaylogo": False})], className="explorer-network"))
     return html.Div(panels, className="explorer-networks")
 
 
@@ -286,20 +308,23 @@ def register(app):
                  Input("ex-words", "value"))(search_words)
 
     @app.callback(Output("ex-sort", "options"), Output("ex-sort", "value"),
-                  Input("ex-words", "value"), Input("ex-model-a", "value"), Input("ex-model-b", "value"))
-    def order_options(words, a, b):
+                  Input("ex-words", "value"), Input("ex-model-a", "value"), Input("ex-model-b", "value"),
+                  State("ex-sort", "options"), State("ex-sort", "value"))
+    def order_options(words, a, b, previous_options, value):
         series = profiles(words, a, b)
         options = [{"label": "Highest share", "value": "share"}, {"label": "Highest count", "value": "count"}]
         if len(series) > 1:
             options.append({"label": "Largest share difference", "value": "difference"})
             options.extend({"label": f"Share · {word} · {MODELS[model]}", "value": f"profile-{i}"}
                            for i, (model, word) in enumerate(series))
-        return options, "share"
+        return options, retained_option(options, previous_options, value)
 
     @app.callback(Output("ex-membership", "options"), Output("ex-membership", "value"),
-                  Input("ex-words", "value"), Input("ex-model-a", "value"), Input("ex-model-b", "value"))
-    def reset_membership(words, a, b):
-        return membership_options(words, a, b), "all"
+                  Input("ex-words", "value"), Input("ex-model-a", "value"), Input("ex-model-b", "value"),
+                  State("ex-membership", "options"), State("ex-membership", "value"))
+    def update_membership(words, a, b, previous_options, value):
+        options = membership_options(words, a, b)
+        return options, retained_option(options, previous_options, value)
 
     @app.callback(Output("ex-words", "value"), Input({"type": "ex-network", "index": ALL}, "clickData"),
                   State("ex-words", "value"), prevent_initial_call=True)
