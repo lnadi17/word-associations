@@ -3,10 +3,11 @@
 import os
 from pathlib import Path
 
-from dash import Dash, Input, Output, dcc, html
+from dash import Dash, Input, Output, State, dcc, html
 from flask import Flask
 
-from wordviz import experiments, explore, paths
+from wordviz import experiments, explore, norm_views, paths
+from wordviz.social_domains import DOMAIN_LABELS
 
 
 ROOT = Path(__file__).resolve().parent
@@ -55,7 +56,7 @@ PAGES = {
     "/implicit-bias": (
         "Implicit bias",
         "Implicit associations",
-        "Examine priming effects, compare target activation, and trace the paths between words.",
+        "Compare how social identity primes activate words in human and language-model networks.",
     ),
 }
 
@@ -66,15 +67,23 @@ def page_content(path):
     if path == "/lexical-decision":
         return experiments.ldt_layout()
     return html.Div([
-        dcc.RadioItems(
-            id="bias-view",
-            options=[
-                {"label": "Priming effects and heatmaps", "value": "activation"},
+        html.Fieldset([
+            html.Legend("Analysis method", className="visually-hidden"),
+            dcc.RadioItems(id="bias-view", options=[
+                {"label": "Priming effects", "value": "priming"},
+                {"label": "Heatmaps", "value": "heatmaps"},
+                {"label": "Word valence", "value": "valence"},
+                {"label": "Emotion word sets", "value": "emotion"},
                 {"label": "Association paths", "value": "paths"},
-            ],
-            value="activation",
-            className="segmented bias-view",
-        ),
+            ], value="priming", persistence=True, persistence_type="memory",
+                className="segmented method-tabs"),
+        ], className="method-selector"),
+        html.Div([
+            experiments.field("Social domain", dcc.Dropdown(id="social-domain",
+                options=[{"label": name, "value": key} for key, name in DOMAIN_LABELS.items()],
+                value="gender", clearable=False, searchable=False)),
+            html.Div(experiments.model_fields("social"), id="social-models", className="model-selectors"),
+        ], className="controls social-toolbar"),
         html.Div(id="bias-content"),
     ])
 
@@ -111,13 +120,24 @@ def open_page(pathname):
     ], navigation(path)
 
 
-for view in (explore, experiments, paths):
+for view in (explore, experiments, paths, norm_views):
     view.register(dashboard)
 
 
-@dashboard.callback(Output("bias-content", "children"), Input("bias-view", "value"))
-def open_bias_view(selected):
-    return paths.layout() if selected == "paths" else experiments.bias_layout()
+@dashboard.callback(Output("bias-content", "children"), Output("social-models", "hidden"),
+                    Input("bias-view", "value"), Input("social-domain", "value"),
+                    State("social-a", "value"), State("social-b", "value"))
+def open_bias_view(method, domain, first_model, second_model):
+    layouts = {"priming": experiments.priming_layout, "heatmaps": experiments.heatmaps_layout,
+               "valence": norm_views.valence_layout, "emotion": norm_views.emotion_layout,
+               "paths": paths.layout}
+    if domain not in DOMAIN_LABELS or method not in layouts:
+        return html.P("Select a method and a social domain.", role="status"), False
+    if method == "paths":
+        view = paths.layout(domain, (first_model or "Humans").lower(), second_model.lower() if second_model else None)
+    else:
+        view = layouts[method](domain)
+    return html.Div(view, key=f"{method}-{domain}"), method == "paths"
 
 
 if __name__ == "__main__":

@@ -65,11 +65,11 @@ class ArchivedExperiments(unittest.TestCase):
         self.assertEqual(signed_rank([]), (None, None))
 
     def test_reordered_preset_retains_six_network_cohort(self):
-        from wordviz.experiments import render_bias
+        from wordviz.experiments import render_effect
 
         female, male = metadata("targets")
         pairs = ", ".join(f"{left}/{right}" for left, right in reversed(DEFAULT_PAIRS))
-        effect_panel, _ = render_bias("Haiku", "Mistral", female[::-1], male, ["woman", "man"], pairs)
+        effect_panel = render_effect("gender", "Haiku", "Mistral", female[::-1], male, pairs, None, None)
         coverage = next(child for child in effect_panel.children if child.__class__.__name__ == "Ul")
         self.assertIn("23/25", coverage.children[0].children)
 
@@ -83,6 +83,39 @@ class ArchivedExperiments(unittest.TestCase):
             chart = panel.children[1]
             self.assertTrue(chart.responsive)
             self.assertEqual(chart.style["height"], f"{chart.figure.layout.height}px")
+
+    def test_custom_contrast_uses_matched_targets_across_networks(self):
+        from wordviz.experiments import contrast_results
+
+        values = {
+            "Humans": {"x": {"a": .8, "b": .2}, "y": {"a": .3, "b": .3}, "z": {"a": .1, "b": .9}},
+            "Gemma": {"x": {"a": .2, "b": .8}, "y": {"a": .3, "b": .3}, "z": {"a": .7}},
+        }
+        items = contrast_results(["Humans", "Gemma"], ["x", "y", "z"], "a", "b", values)
+        table = next(item for item in items if getattr(item, "className", "") == "table-wrap")
+        rows = [[cell.children for cell in row.children] for row in table.children.children[1].children]
+        self.assertEqual(rows[0][1:4], [2, 1, "+0.3000"])
+        self.assertEqual(rows[1][1:4], [2, 1, "-0.3000"])
+        self.assertEqual(float(rows[0][4]), -float(rows[1][4]))
+        self.assertEqual(rows[0][5], rows[1][5])
+
+    def test_new_domain_has_no_implicit_reference_prime(self):
+        from wordviz.experiments import EXAMPLE_TARGETS, render_effect
+        from wordviz.social_domains import DOMAIN_PRIMES
+
+        for domain in set(DOMAIN_PRIMES) - {"gender"}:
+            result = render_effect(domain, "Humans", None, EXAMPLE_TARGETS, [], None, None, None)
+            self.assertIn("Choose two different primes", result.children)
+
+    def test_heatmap_separates_missing_data_and_observed_zero(self):
+        from wordviz.experiments import heatmap
+
+        chart = heatmap("Gemma", [["present", "absent"]], ["seen", "missing"],
+                        {"Gemma": {"present": {"seen": 0}}}, ["Target words"], ["missing"])
+        figure = chart.children.children.figure
+        self.assertEqual([list(row) for row in figure.data[0].z], [[0, None], [None, None]])
+        self.assertEqual(list(figure.layout.xaxis.ticktext), ["seen", "missing · N/A"])
+        self.assertEqual(list(figure.layout.yaxis.ticktext), ["present", "absent · N/A"])
 
 
 if __name__ == "__main__":

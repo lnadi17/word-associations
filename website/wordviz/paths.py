@@ -4,6 +4,7 @@ from dash import Input, Output, State, dcc, html
 import plotly.graph_objects as go
 
 from .path_data import MODEL_NAMES, load_graph, stream
+from .social_domains import DOMAIN_PRIMES
 
 
 DEFAULT_PRIMES = ["feminine", "masculine"]
@@ -12,13 +13,15 @@ MODEL_OPTIONS = [{"label": name, "value": key} for key, name in MODEL_NAMES.item
 VALENCE_COLORS = [[0, "#ad3f46"], [0.5, "#ecebe4"], [1, "#3266a4"]]
 
 
-def _field(label, component):
-    component.persistence = True
+def _field(label, component, persistence=True):
+    component.persistence = persistence
     component.persistence_type = "memory"
     return html.Div([html.Label(label, htmlFor=component.id), component], className="field")
 
 
-def layout():
+def layout(domain="gender", primary_model="humans", comparison_model=None):
+    starts = DEFAULT_PRIMES if domain == "gender" else DOMAIN_PRIMES[domain]
+    ends = DEFAULT_TARGETS if domain == "gender" else ["community"]
     legend = []
     for label, color in [("Negative", VALENCE_COLORS[0][1]), ("Neutral", VALENCE_COLORS[1][1]),
                          ("Positive", VALENCE_COLORS[2][1]), ("Unrated", "#aeb3b6")]:
@@ -31,19 +34,21 @@ def layout():
         legend.append(html.Li([swatch, label], style={"display": "flex", "alignItems": "center", "gap": "6px"}))
     return html.Section([
         html.H2("Association paths", id="association-paths"),
-        html.P("Figures 8–9 · Trace the shortest routes between words in the filtered association graphs. "
-               "Color shows human-rated valence from NRC VAD v2.1."),
+        html.P(("Figures 8–9 · " if domain == "gender" else "")
+               + "Trace the shortest routes between words in the filtered association graphs. "
+               "Color shows human-rated valence from NRC VAD v2.1."
+               + ("" if domain == "gender" else " The example target is community. Choose any graph node to explore another target.")),
         html.Div([
             _field("Path model", dcc.Dropdown(
-                id="path-a", options=MODEL_OPTIONS, value="humans", clearable=False)),
+                id="path-a", options=MODEL_OPTIONS, value=primary_model, clearable=False)),
             _field("Compare path model", dcc.Dropdown(
-                id="path-b", options=MODEL_OPTIONS, value="haiku", placeholder="Single graph")),
+                id="path-b", options=MODEL_OPTIONS, value=comparison_model, placeholder="Single graph")),
             _field("Starting words", dcc.Dropdown(
-                id="path-start", value=DEFAULT_PRIMES.copy(),
-                multi=True, placeholder="Search graph nodes")),
+                id="path-start", value=list(starts),
+                multi=True, placeholder="Search graph nodes"), domain),
             _field("Target words", dcc.Dropdown(
-                id="path-end", value=DEFAULT_TARGETS.copy(),
-                multi=True, placeholder="Search graph nodes")),
+                id="path-end", value=list(ends),
+                multi=True, placeholder="Search graph nodes"), domain),
         ], className="controls"),
         html.Ul(legend, className="source-note", **{"aria-label": "Word valence legend"},
                 style={"display": "flex", "flexWrap": "wrap", "gap": "6px 18px", "padding": 0}),

@@ -5,10 +5,13 @@ import shutil
 
 import plotly
 
+from wordviz.bias_norms import valence_result, emotion_result
 from wordviz.experiment_data import metadata
 from wordviz.explore_data import vocabulary
 from wordviz.models import GRAPH_MODELS, MATRIX_MODELS
 from wordviz.path_data import load_graph
+from wordviz.social_data import domain_info
+from wordviz.social_domains import DOMAIN_PRIMES
 
 
 if __name__ == "__main__":
@@ -17,6 +20,13 @@ if __name__ == "__main__":
             raise SystemExit(f"Empty serving data for {model}")
     if set(metadata("ldt")["activation"]) != set(MATRIX_MODELS):
         raise SystemExit("Incomplete LDT matrix snapshot")
+    for model in MATRIX_MODELS:
+        for domain in DOMAIN_PRIMES:
+            primes = domain_info(domain, model)["primes"]
+            if len(primes) < 2 or not valence_result(domain, model)["rows"]:
+                raise SystemExit(f"Incomplete valence data for {model}/{domain}")
+            if len(emotion_result(domain, model, *primes[:2])["rows"]) != 8:
+                raise SystemExit(f"Incomplete emotion data for {model}/{domain}")
     source = Path(plotly.__file__).parent / "package_data" / "plotly.min.js"
     target = Path(__file__).parent / "public" / "vendor" / source.name
     target.parent.mkdir(parents=True, exist_ok=True)

@@ -82,7 +82,14 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
 .segmented label:has(:checked) { background: var(--teal-dark); color: #fff; }
 .segmented label:focus-within { outline: 2px solid #bd7229; }
 .segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-.bias-view { margin-bottom: 18px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.method-selector { min-width: 0; padding: 0; border: 0; margin: 0 0 16px; }
+.method-tabs { max-width: 100%; }
+.method-tabs label { padding: 9px 15px; }
+.social-toolbar > .field { flex: 1 1 175px; }
+.model-selectors { flex: 2 1 340px; display: flex; flex-wrap: wrap; gap: 14px 20px; }
+.model-selectors[hidden] { display: none; }
+.model-selectors > .field { flex: 1 1 145px; }
 .explorer-layout { display: grid; grid-template-columns: minmax(245px, 26%) minmax(0, 1fr); align-items: start; gap: 18px; }
 .explorer-layout > .panel:first-child { border-top: 3px solid var(--teal); }
 .explorer-layout .explorer-primary, .explorer-layout .explorer-modes { flex-direction: column; align-items: stretch; gap: 18px; }
