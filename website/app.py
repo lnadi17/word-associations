@@ -8,8 +8,8 @@ from pathlib import Path
 from dash import Dash, Input, Output, State, dcc, html
 from flask import Flask, Response, request
 
-from wordviz import experiments, explore, norm_views, paths
-from wordviz.social_domains import DOMAIN_LABELS
+from wordviz import custom_domains, experiments, explore, norm_views, paths
+from wordviz.social_domains import DOMAIN_LABELS, key_for
 
 
 ROOT = Path(__file__).resolve().parent
@@ -106,6 +106,7 @@ def page_content(path):
                 value="gender", clearable=False, searchable=False)),
             html.Div(experiments.model_fields("social"), id="social-models", className="model-selectors"),
         ], className="controls social-toolbar"),
+        custom_domains.layout(),
         html.Div(id="bias-content"),
     ])
 
@@ -142,24 +143,31 @@ def open_page(pathname):
     ], navigation(path)
 
 
-for view in (explore, experiments, paths, norm_views):
+for view in (explore, experiments, paths, norm_views, custom_domains):
     view.register(dashboard)
 
 
 @dashboard.callback(Output("bias-content", "children"), Output("social-models", "hidden"),
                     Input("bias-view", "value"), Input("social-domain", "value"),
+                    Input("custom-domains", "data"),
                     State("social-a", "value"), State("social-b", "value"))
-def open_bias_view(method, domain, first_model, second_model):
+def open_bias_view(method, domain, saved_domains, first_model, second_model):
     layouts = {"priming": experiments.priming_layout, "heatmaps": experiments.heatmaps_layout,
                "valence": norm_views.valence_layout, "emotion": norm_views.emotion_layout,
                "paths": paths.layout}
-    if domain not in DOMAIN_LABELS or method not in layouts:
+    if domain == custom_domains.NEW_DOMAIN:
+        return None, True
+    if not isinstance(domain, str):
+        return html.P("Select a social domain.", role="status"), False
+    if domain not in DOMAIN_LABELS:
+        domain = custom_domains.get_domain(saved_domains, domain)
+    if domain is None or method not in layouts:
         return html.P("Select a method and a social domain.", role="status"), False
     if method == "paths":
         view = paths.layout(domain, (first_model or "Humans").lower(), second_model.lower() if second_model else None)
     else:
         view = layouts[method](domain)
-    return html.Div(view, key=f"{method}-{domain}"), method == "paths"
+    return html.Div(view, key=f"{method}-{key_for(domain)}"), method == "paths"
 
 
 if __name__ == "__main__":
