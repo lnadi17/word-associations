@@ -1,6 +1,6 @@
 # word-associations
 
-The [interactive research website](website/README.md) explores word associations across ten networks and compares lexical-decision and gender-priming results across six.
+Explore word associations across ten networks and compare lexical-decision and gender-priming results across six on the [live research website](https://word-associations.vercel.app/). The [website guide](website/README.md) explains the datasets and how to run the app locally.
 
 ## TODO
 - [x] Add LWOW dataset
