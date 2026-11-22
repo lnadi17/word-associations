@@ -5,6 +5,9 @@ from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
 
+# Plotly reads NumPy directly from sys.modules when validating chart arrays.
+# Finish importing it before concurrent Flask requests can see a partial module.
+import numpy  # noqa: F401
 from dash import Dash, Input, Output, State, dcc, html
 from flask import Flask, Response, request
 
