@@ -10,7 +10,8 @@ from .social_domains import DOMAIN_LABELS, DOMAIN_PRIMES
 
 
 def valence_layout(domain):
-    return dcc.Loading(html.Div(id="valence-results"))
+    return html.Div([dcc.Store(id="valence-domain", data=domain),
+                     dcc.Loading(html.Div(id="valence-results"))])
 
 
 def emotion_layout(domain):
@@ -23,7 +24,8 @@ def emotion_layout(domain):
             dcc.Dropdown(id=control_id, options=list(primes), value=primes[i], clearable=False,
                          persistence=domain, persistence_type="memory"),
         ], className="field"))
-    return html.Div([html.Div(fields, className="controls"), dcc.Loading(html.Div(id="emotion-results"))])
+    return html.Div([dcc.Store(id="emotion-domain", data=domain), html.Div(fields, className="controls"),
+                     dcc.Loading(html.Div(id="emotion-results"))])
 
 
 def number(value):
@@ -137,8 +139,10 @@ def emotion_view(domain, a, b, left, right):
 
 
 def register(app):
-    app.callback(Output("valence-results", "children"), Input("social-domain", "value"),
+    # Only the mounted panel requests a plot. A global domain change also
+    # replaces the panel, so listening to it here would redraw a removed graph.
+    app.callback(Output("valence-results", "children"), Input("valence-domain", "data"),
                  Input("social-a", "value"), Input("social-b", "value"))(valence_view)
-    app.callback(Output("emotion-results", "children"), Input("social-domain", "value"),
+    app.callback(Output("emotion-results", "children"), Input("emotion-domain", "data"),
                  Input("social-a", "value"), Input("social-b", "value"),
                  Input("emotion-left", "value"), Input("emotion-right", "value"))(emotion_view)
