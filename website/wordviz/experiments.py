@@ -585,8 +585,10 @@ def paired_effect(pair, groups, info, values, models):
     missing = [f"{MODELS[m]} ({', '.join(info[m]['missing_primes'])})" for m in MODELS if m not in eligible]
     labels = [f"{label} · {prime}" for label, prime in zip(pair["labels"], primes)]
     return [
-        html.P(f"Positive effects mean stronger activation from {primes[0]} for {pair['labels'][0]} "
-               f"and from {primes[1]} for {pair['labels'][1]}. The selected networks are highlighted."),
+        html.P(f"For the {pair['labels'][0]} list, each word’s difference is activation from "
+               f"{primes[0]} minus activation from {primes[1]}. The order reverses for the "
+               f"{pair['labels'][1]} list. A positive effect favors that list’s expected prime. "
+               "The network selectors highlight bars in both panels."),
         effect_panels(labels, charts),
         html.P("An asterisk marks a one-sided Wilcoxon test with Holm-adjusted p < .05. "
                "Each test compares the two primes within target words for one network.",

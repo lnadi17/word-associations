@@ -212,12 +212,6 @@ def _form(record):
 
 
 def register(app):
-    # Hide the previous domain's controls as soon as the selection changes, even
-    # when the server is still preparing a new form with the same input IDs.
-    app.clientside_callback(
-        "function(key) { return {['--form-' + key]: 'block'}; }",
-        Output("custom-form", "style"), Input("social-domain", "value"),
-    )
     @app.callback(Output("social-domain", "options"), Output("social-domain", "value"),
                   Output("custom-ready", "data"), Input("custom-domains", "modified_timestamp"), Input("custom-action", "data"),
                   Input("custom-summary", "n_clicks"),
@@ -229,9 +223,10 @@ def register(app):
                 return no_update, NEW_DOMAIN, no_update
             raise PreventUpdate
         library = _library(data)
-        options = [{"label": name, "value": key} for key, name in DOMAIN_LABELS.items()]
-        options += [{"label": record["name"], "value": key} for key, record in library.items()]
-        options.append({"label": "Add a custom domain…", "value": NEW_DOMAIN})
+        entries = [*DOMAIN_LABELS.items(), *((key, record["name"]) for key, record in library.items()),
+                   (NEW_DOMAIN, "Add a custom domain…")]
+        options = [{"label": html.Span(label, **{"data-domain-id": key}), "value": key}
+                   for key, label in entries]
         selected = current if ready else (last or current)
         if "custom-action.data" in ctx.triggered_prop_ids and isinstance(action, dict):
             selected = action.get("select")
@@ -258,12 +253,9 @@ def register(app):
             if not record or opened_record:
                 # Native details toggling preserves the same draft until a save or domain change.
                 raise PreventUpdate
-            return html.Div(_form(record), key=key, style={"display": f"var(--form-{key}, none)"}), label, True
-        elif key == NEW_DOMAIN:
-            return html.Div(_form(None), key=key, style={"display": f"var(--form-{key}, none)"}), label, True
-        # Mount the edit fields only after the saved domain's disclosure is opened.
-        # A hidden field with the same ID can otherwise receive the next domain's input.
-        return None, label, False
+        elif key != NEW_DOMAIN:
+            return None, label, False
+        return html.Div(_form(record), key=key, **{"data-editor-domain": key}), label, True
 
     @app.callback(Output("custom-primes", "value"), Output("custom-list-rows", "children", allow_duplicate=True),
                   Output("custom-study", "data"), Output("custom-add-list", "disabled", allow_duplicate=True),

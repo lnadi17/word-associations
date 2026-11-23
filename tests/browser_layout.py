@@ -268,8 +268,18 @@ def check_primes_only_domain(page, methods):
 
 def check_research_template(page, methods, title):
     methods.get_by_text("Priming effects", exact=True).click()
+    disclosure = page.locator("#custom-summary")
+    name = page.locator("#custom-name")
+    disclosure.click()
+    name.fill("Unsaved occupation draft")
+    disclosure.click()
+    expect(name).to_be_hidden()
+    disclosure.click()
+    expect(name).to_be_visible()
+    expect(name).to_have_value("Unsaved occupation draft")
+    # Switching directly from an open edit must direct the next input to the new draft.
     choose(page, "social-domain", "Add a custom domain…")
-    page.locator("#custom-name").fill("Replication")
+    name.fill("Replication")
     choose(page, "custom-template", re.compile(re.escape(title) + r" · 25 \+ 25 targets"))
     lists = page.locator("#custom-list-rows")
     expect(lists.get_by_label("Target words")).to_have_count(2)
