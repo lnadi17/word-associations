@@ -92,15 +92,15 @@ def signed_rank(differences):
     return z / math.sqrt(len(differences)), math.erfc(z / math.sqrt(2)) / 2
 
 
-def two_sided_signed_rank(differences):
-    """Return the signed effect, two-sided p, nonzero count and p-value method."""
+def contrast_signed_rank(differences, *, directional=False):
+    """Signed effect and exact or asymptotic p for a positive or two-sided alternative."""
     nonzero = [d for d in differences if d != 0]
     n = len(nonzero)
     if n == 0:
         return None, None, 0, "No nonzero differences"
-    effect, _ = signed_rank(differences)
+    effect, upper_p = signed_rank(differences)
     if n > EXACT_SIGN_RANK_LIMIT:
-        p = math.erfc(abs(effect) * math.sqrt(len(differences) / 2))
+        p = upper_p if directional else math.erfc(abs(effect) * math.sqrt(len(differences) / 2))
         return effect, p, n, "Normal approximation"
 
     # Double average ranks so tied half-ranks have integer indices. Each
@@ -115,9 +115,16 @@ def two_sided_signed_rank(differences):
         for subtotal in range(reached, -1, -1):
             counts[subtotal + weight] += counts[subtotal]
         reached += weight
-    tail = abs(2 * observed - total)
-    extreme = sum(count for subtotal, count in enumerate(counts) if abs(2 * subtotal - total) >= tail)
+    if directional:
+        extreme = sum(counts[observed:])
+    else:
+        tail = abs(2 * observed - total)
+        extreme = sum(count for subtotal, count in enumerate(counts) if abs(2 * subtotal - total) >= tail)
     return effect, extreme / (2 ** n), n, "Exact sign permutation"
+
+
+def two_sided_signed_rank(differences):
+    return contrast_signed_rank(differences)
 
 
 def ldt_stats(model, experiment):

@@ -107,6 +107,14 @@ def check_page(page, url):
         check_chart(effect, ".barlayer .point path", 320)
     choose(page, "social-b", "GPT-5 mini")
     choose(page, "social-domain", "Religion")
+    paired_title = page.locator("#target-preset .Select-value-label")
+    expect(page.locator("#bias-targets-1 .Select-value-label")).to_have_count(25)
+    expect(page.locator("#bias-targets-0 .Select-value-label")).to_have_count(25)
+    research_title = paired_title.inner_text()
+    expect(page.locator("#effect-results table tbody tr")).to_have_count(12)
+    for chart in page.locator("#effect-results .dash-graph").all():
+        expect(chart.locator(".xtick")).to_have_count(6)
+    choose(page, "target-preset", "Perceived religiousness")
     choose(page, "effect-left", "christian")
     choose(page, "effect-right", "muslim")
     expect(page.locator("#effect-results")).to_contain_text("christian versus muslim")
@@ -143,6 +151,7 @@ def check_page(page, url):
 
     check_custom_domain(page, methods)
     check_primes_only_domain(page, methods)
+    check_research_template(page, methods, research_title)
 
 
 def check_custom_domain(page, methods):
@@ -153,15 +162,18 @@ def check_custom_domain(page, methods):
     page.locator("#custom-add-list").click()
     rows.get_by_label("Word-list name").fill("Experience")
     rows.get_by_label("Target words").fill("wise, capable")
+    rows.get_by_label("Expected prime (optional)").fill("young")
     page.locator("#custom-add-list").click()
     expect(rows.get_by_label("Word-list name")).to_have_count(2)
     rows.get_by_label("Word-list name").last.fill("Energy")
     rows.get_by_label("Target words").last.fill("active, quick")
+    rows.get_by_label("Expected prime (optional)").last.fill("old")
     page.locator("#custom-save").click()
     expect(page.locator("#social-domain .Select-value-label")).to_have_text("Age associations")
     methods.get_by_text("Priming effects", exact=True).click()
-    expect(page.locator("#effect-results")).to_contain_text("young versus old")
-    expect(page.locator("#effect-results table tbody tr")).to_have_count(2)
+    expect(page.locator("#effect-results .dash-graph")).to_have_count(2)
+    expect(page.locator("#effect-results table tbody tr")).to_have_count(12)
+    expect(page.locator("#effect-results")).to_contain_text("2/2 targets")
     choose(page, "target-preset", "Energy")
     expect(page.locator("#effect-results")).to_contain_text("2/2 targets")
     methods.get_by_text("Heatmaps", exact=True).click()
@@ -227,8 +239,9 @@ def check_primes_only_domain(page, methods):
     for method, results in (("Priming effects", "effect"), ("Heatmaps", "heat")):
         methods.get_by_text(method, exact=True).click()
         expect(page.locator(f"#{results}-results [role=status]")).to_contain_text("target")
-        expect(page.locator("#target-preset")).to_have_count(0)
+        expect(page.locator("#target-preset")).to_contain_text("Enter two target sets")
     search_word(page, "bias-targets-0", "wise")
+    search_word(page, "bias-targets-1", "care")
     expect(page.locator("#heat-results .dash-graph").first.locator(".ytick text")).to_have_text(["wise"])
     methods.get_by_text("Priming effects", exact=True).click()
     expect(page.locator("#effect-results")).to_contain_text("1/1 targets")
@@ -251,6 +264,29 @@ def check_primes_only_domain(page, methods):
     expect(page.locator("#path-list .Select-value-label")).to_have_text("Training")
     expect(page.locator("#path-results h3").first).to_have_text("teacher → skill")
     check_width(page)
+
+
+def check_research_template(page, methods, title):
+    methods.get_by_text("Priming effects", exact=True).click()
+    choose(page, "social-domain", "Add a custom domain…")
+    page.locator("#custom-name").fill("Replication")
+    choose(page, "custom-template", re.compile(re.escape(title) + r" · 25 \+ 25 targets"))
+    lists = page.locator("#custom-list-rows")
+    expect(lists.get_by_label("Target words")).to_have_count(2)
+    for words in lists.get_by_label("Target words").all():
+        assert len(words.input_value().split(",")) == 25
+    page.locator("#custom-save").click()
+    expect(page.locator("#social-domain")).to_contain_text("Replication")
+    expect(page.locator("#effect-results table tbody tr")).to_have_count(12)
+    expect(page.locator("#target-editor a").first).to_be_visible()
+    evidence = page.locator("#target-editor").get_by_role("link", name="Target rankings and nomination counts (CSV)")
+    response = page.request.get(evidence.evaluate("link => link.href"))
+    assert response.ok and response.text().startswith("domain,prime_1,prime_2,")
+    assert "religion,christian,muslim," in response.text()
+    page.reload()
+    expect(page.locator("#social-domain")).to_contain_text("Replication")
+    expect(page.locator("#bias-targets-1 .Select-value-label")).to_have_count(25)
+    expect(page.locator("#effect-results .dash-graph")).to_have_count(2)
 
 
 if __name__ == "__main__":

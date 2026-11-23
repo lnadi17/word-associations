@@ -7,6 +7,7 @@ from uuid import uuid4
 from dash import ALL, Input, Output, Patch, State, ctx, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
+from .paired_presets import templates
 from .social_domains import DOMAIN_LABELS, DOMAIN_PRIMES
 
 NEW_DOMAIN = "new-custom-domain"
@@ -40,7 +41,7 @@ def _words(raw, field, minimum, maximum):
     return list(words)
 
 
-def _domain(key, name, primes, pairs):
+def _domain(key, name, primes, pairs, list_primes=None, study_template=None):
     if not isinstance(key, str) or not _ID.fullmatch(key):
         raise ValueError("Select a saved domain or create a new one.")
     name = _label(name, "domain name")
@@ -55,7 +56,19 @@ def _domain(key, name, primes, pairs):
         if title.casefold() in {label.casefold() for label in lists}:
             raise ValueError("Give each word list a distinct name.")
         lists[title] = _words(words, title, 1, MAX_TARGETS)
-    return {"id": key, "name": name, "primes": primes, "lists": lists}
+    record = {"id": key, "name": name, "primes": primes, "lists": lists}
+    if list_primes is not None:
+        if not isinstance(list_primes, dict) or any(
+            title not in lists or prime not in primes for title, prime in list_primes.items()
+        ):
+            raise ValueError("Each expected prime must be one of the domain’s prime words.")
+        if list_primes:
+            record["list_primes"] = list_primes
+    if study_template is not None:
+        if not isinstance(study_template, str) or study_template not in templates():
+            raise ValueError("Choose an available research template.")
+        record["study_template"] = study_template
+    return record
 
 
 def validate_domain(value):
@@ -66,7 +79,8 @@ def validate_domain(value):
     if not isinstance(lists, dict):
         return None
     try:
-        return _domain(value.get("id"), value.get("name"), value.get("primes"), lists.items())
+        return _domain(value.get("id"), value.get("name"), value.get("primes"), lists.items(),
+                       value.get("list_primes"), value.get("study_template"))
     except ValueError:
         return None
 
@@ -90,7 +104,7 @@ def _split(text, maximum):
     return re.split(r"[,;\n]", text)
 
 
-def save_domain(data, original, name, prime_text, titles, target_texts):
+def save_domain(data, original, name, prime_text, titles, target_texts, expected_primes=None, study_template=None):
     library = _library(data)
     key = original["id"] if original else "custom-" + uuid4().hex
     if original and library.get(key) != original:
@@ -101,12 +115,21 @@ def save_domain(data, original, name, prime_text, titles, target_texts):
         raise ValueError("Enter a name and words for each list.")
     if len(titles) > MAX_LISTS:
         raise ValueError(f"Use up to {MAX_LISTS} named word lists.")
-    pairs = []
-    for title, words in zip(titles, target_texts):
-        if isinstance(title, str) and isinstance(words, str) and not (title.strip() or words.strip()):
+    if expected_primes is None:
+        expected_primes = [""] * len(titles)
+    if not isinstance(expected_primes, list) or len(expected_primes) != len(titles):
+        raise ValueError("Check the expected prime for each word list.")
+    pairs, assignments = [], {}
+    for title, words, expected in zip(titles, target_texts, expected_primes):
+        if expected is not None and not isinstance(expected, str):
+            raise ValueError("Enter a prime word for the target list.")
+        prime = " ".join((expected or "").casefold().split())
+        if isinstance(title, str) and isinstance(words, str) and not (title.strip() or words.strip() or prime):
             continue
+        if prime:
+            assignments[_label(title, "word-list name")] = prime
         pairs.append((title, _split(words, MAX_TARGETS)))
-    record = _domain(key, name, _split(prime_text, MAX_PRIMES), pairs)
+    record = _domain(key, name, _split(prime_text, MAX_PRIMES), pairs, assignments, study_template)
     if any(d["name"].casefold() == record["name"].casefold() for k, d in library.items() if k != key):
         raise ValueError("A saved domain already has that name.")
     library[key] = record
@@ -120,11 +143,14 @@ def _field(label, control):
     return html.Div([html.Label(label, htmlFor=component_id), control], className="field")
 
 
-def _list_row(title="", words=()):
+def _list_row(title="", words=(), prime=""):
     key = uuid4().hex
     return html.Div([
         _field("Word-list name", dcc.Input(id={"type": "domain-list-name", "key": key},
                type="text", value=title, maxLength=NAME_LIMIT, style={"width": "100%"})),
+        _field("Expected prime (optional)", dcc.Input(id={"type": "domain-list-prime", "key": key},
+               type="text", value=prime, list="custom-prime-options", maxLength=WORD_LIMIT,
+               placeholder="Choose a domain prime", style={"width": "100%"})),
         _field("Target words", dcc.Textarea(id={"type": "domain-list-words", "key": key},
                value=", ".join(words), placeholder="calm, anxious, curious", rows=2,
                maxLength=(WORD_LIMIT + 2) * MAX_TARGETS, style={"width": "100%"})),
@@ -147,15 +173,17 @@ def _form(record):
     creating = not record
     lists = {} if creating else record["lists"]
     primes = [] if creating else record["primes"]
-    template = [] if record else [_field("Start with primes from", dcc.Dropdown(
-        id="custom-template", clearable=False, searchable=False, placeholder="Blank list",
-        options=[{"value": "", "label": "Blank list"}] + [
-            {"value": key, "label": name} for key, name in DOMAIN_LABELS.items()]))]
+    template = [] if record else [_field("Starting template", dcc.Dropdown(
+        id="custom-template", clearable=False, placeholder="Start from scratch",
+        options=[{"value": key, "label": f"{key.split('/', 1)[1]} · {len(study.targets[0])} + {len(study.targets[1])} targets"}
+                 for key, study in templates().items()]
+        + [{"value": key, "label": name + " · primes only"} for key, name in DOMAIN_LABELS.items()]))]
     delete = [] if creating else [dcc.ConfirmDialogProvider(
         html.Button("Delete domain"), id="custom-delete",
         message=f'Delete “{record["name"]}” and its word lists from this browser?')]
     return [
         dcc.Store(id="custom-original", data=record),
+        dcc.Store(id="custom-study", data=record.get("study_template") if record else None),
         html.P("Save domains in this browser. Enter words separated by commas or new lines."),
         html.Div([
             _field("Domain name", dcc.Input(id="custom-name", type="text", maxLength=NAME_LIMIT,
@@ -166,11 +194,15 @@ def _form(record):
                    value=", ".join(primes), rows=2, placeholder="young, old",
                    maxLength=(WORD_LIMIT + 2) * MAX_PRIMES, style={"width": "100%"})),
         ], className="controls"),
+        html.Datalist(id="custom-prime-options"),
+        *([html.P("Choosing a template fills the primes and replaces the target lists in this draft.",
+                  className="hint")] if creating else []),
         html.H3("Target word lists (optional)"),
-        html.P("Word valence and Emotion word sets use your primes with their own reference words. "
-               f"For the other views, you can add up to {MAX_LISTS} lists of {MAX_TARGETS} words each, now or later.",
+        html.P("To compare two target sets across all six networks, assign a different expected prime to each list. "
+               f"Enter up to {MAX_TARGETS} words per list. Word valence and Emotion word sets only need primes.",
                className="hint"),
-        html.Div([_list_row(title, words) for title, words in lists.items()], id="custom-list-rows"),
+        html.Div([_list_row(title, words, record.get("list_primes", {}).get(title, ""))
+                  for title, words in lists.items()], id="custom-list-rows"),
         html.Div([html.Button("Add word list", id="custom-add-list", n_clicks=0,
                               disabled=len(lists) >= MAX_LISTS),
                   html.Button("Save and use domain", id="custom-save", n_clicks=0), *delete],
@@ -180,6 +212,12 @@ def _form(record):
 
 
 def register(app):
+    # Hide the previous domain's controls as soon as the selection changes, even
+    # when the server is still preparing a new form with the same input IDs.
+    app.clientside_callback(
+        "function(key) { return {['--form-' + key]: 'block'}; }",
+        Output("custom-form", "style"), Input("social-domain", "value"),
+    )
     @app.callback(Output("social-domain", "options"), Output("social-domain", "value"),
                   Output("custom-ready", "data"), Input("custom-domains", "modified_timestamp"), Input("custom-action", "data"),
                   Input("custom-summary", "n_clicks"),
@@ -211,21 +249,39 @@ def register(app):
 
     @app.callback(Output("custom-form", "children"), Output("custom-summary", "children"),
                   Output("custom-manager", "open"),
-                  Input("social-domain", "value"), Input("custom-action", "data"),
-                  State("custom-domains", "data"))
-    def show_editor(key, _action, data):
+                  Input("social-domain", "value"), Input("custom-action", "data"), Input("custom-summary", "n_clicks"),
+                  State("custom-domains", "data"), State("custom-original", "data", allow_optional=True))
+    def show_editor(key, _action, _clicks, data, opened_record):
         record = get_domain(data, key)
         label = f'Edit {record["name"]}' if record else "Add a custom domain"
-        if not record and key != NEW_DOMAIN:
-            return None, label, False
-        return html.Div(_form(record), key=key), label, key == NEW_DOMAIN
+        if set(ctx.triggered_prop_ids) == {"custom-summary.n_clicks"}:
+            if not record or opened_record:
+                # Native details toggling preserves the same draft until a save or domain change.
+                raise PreventUpdate
+            return html.Div(_form(record), key=key, style={"display": f"var(--form-{key}, none)"}), label, True
+        elif key == NEW_DOMAIN:
+            return html.Div(_form(None), key=key, style={"display": f"var(--form-{key}, none)"}), label, True
+        # Mount the edit fields only after the saved domain's disclosure is opened.
+        # A hidden field with the same ID can otherwise receive the next domain's input.
+        return None, label, False
 
-    @app.callback(Output("custom-primes", "value"), Input("custom-template", "value", allow_optional=True),
+    @app.callback(Output("custom-primes", "value"), Output("custom-list-rows", "children", allow_duplicate=True),
+                  Output("custom-study", "data"), Output("custom-add-list", "disabled", allow_duplicate=True),
+                  Input("custom-template", "value", allow_optional=True),
                   prevent_initial_call=True)
-    def fill_primes(template):
-        if template is None:
+    def fill_template(template):
+        if template in DOMAIN_PRIMES:
+            return ", ".join(DOMAIN_PRIMES[template]), [], None, False
+        study = templates().get(template)
+        if not study:
             raise PreventUpdate
-        return ", ".join(DOMAIN_PRIMES.get(template, ()))
+        rows = [_list_row(title, words, prime) for title, words, prime in zip(study.labels, study.targets, study.primes)]
+        return ", ".join(study.primes), rows, template, False
+
+    @app.callback(Output("custom-prime-options", "children"), Input("custom-primes", "value"))
+    def prime_options(text):
+        words = (word.strip().casefold() for word in re.split(r"[,;\n]", text or ""))
+        return [html.Option(value=w) for w in dict.fromkeys(words) if w]
 
     @app.callback(Output("custom-list-rows", "children"), Output("custom-add-list", "disabled"),
                   Input("custom-add-list", "n_clicks"),
@@ -251,15 +307,16 @@ def register(app):
                   State("custom-name", "value"), State("custom-primes", "value"),
                   State({"type": "domain-list-name", "key": ALL}, "value"),
                   State({"type": "domain-list-words", "key": ALL}, "value"),
+                  State({"type": "domain-list-prime", "key": ALL}, "value"), State("custom-study", "data"),
                   prevent_initial_call=True)
-    def change_domain(save, delete, data, original, name, primes, titles, words):
+    def change_domain(save, delete, data, original, name, primes, titles, words, expected, template):
         try:
             if original is not None:
                 original = validate_domain(original)
                 if not original:
                     raise ValueError("Reopen the domain to edit its saved words.")
             if ctx.triggered_id == "custom-save" and save:
-                library, key = save_domain(data, original, name, primes, titles, words)
+                library, key = save_domain(data, original, name, primes, titles, words, expected, template)
             elif ctx.triggered_id == "custom-delete" and delete and original:
                 library = _library(data)
                 if library.get(original["id"]) != original:
