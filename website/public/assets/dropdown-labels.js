@@ -18,10 +18,24 @@
     else if (node.childElementCount) node.querySelectorAll('[role="combobox"]').forEach(labelCombobox);
   }
 
+  // The dropdown changes immediately while the next form arrives from the server.
+  // Keep typing and focus away from an open form for the previously selected domain.
+  function matchEditorToDomain() {
+    const editor = document.querySelector('#custom-form > [data-editor-domain]');
+    if (!editor) return;
+    const selection = document.querySelector('#social-domain .Select-value [data-domain-id]');
+    editor.hidden = editor.dataset.editorDomain !== selection?.dataset.domainId;
+  }
+
   labelControlsIn(document.documentElement);
   new MutationObserver(records => {
     for (const record of records) record.addedNodes.forEach(labelControlsIn);
-  }).observe(document.documentElement, { childList: true, subtree: true });
+    if (records.some(record => record.target.closest?.('#custom-form, #social-domain'))) {
+      matchEditorToDomain();
+    }
+  }).observe(document.documentElement, {
+    childList: true, subtree: true, attributes: true, attributeFilter: ['data-domain-id'],
+  });
 
   // React Select renders non-searchable controls as divs. Native labels
   // already focus searchable inputs and textareas.
