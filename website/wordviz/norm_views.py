@@ -1,5 +1,7 @@
 """Valence regressions and emotion-word contrasts for social identity primes."""
 
+from textwrap import wrap
+
 import plotly.graph_objects as go
 from dash import Input, Output, dcc, html
 
@@ -47,7 +49,8 @@ def norm_chart(results, category_key, category_title, value_key, value_title):
             error = {"type": "data", "symmetric": False,
                      "array": [r["ci_high"] - r["slope"] if r["ci_high"] is not None else 0 for r in rows],
                      "arrayminus": [r["slope"] - r["ci_low"] if r["ci_low"] is not None else 0 for r in rows]}
-        fig.add_scatter(name=MATRIX_MODELS[model], x=[categories.index(label) + offset for label in labels],
+        display_name = "<br>".join(wrap(MATRIX_MODELS[model], width=19, break_long_words=False))
+        fig.add_scatter(name=display_name, x=[categories.index(label) + offset for label in labels],
                         y=values, mode="markers",
                         marker={"size": 10, "color": (ACCENT, SECONDARY)[index], "symbol": ("circle", "diamond")[index]},
                         error_y=error, customdata=[[r[category_key], r["n"], format_p(r["p"])] for r in rows],

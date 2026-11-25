@@ -35,14 +35,14 @@ if __name__ == "__main__":
     for model in GRAPH_MODELS:
         if not vocabulary(model) or not load_graph(model)["words"]:
             raise SystemExit(f"Empty serving data for {model}")
-    if set(metadata("ldt")["activation"]) != set(MATRIX_MODELS):
+    if not set(MATRIX_MODELS).issubset(metadata("ldt")["activation"]):
         raise SystemExit("Incomplete LDT matrix snapshot")
     for model in MATRIX_MODELS:
         for domain in DOMAIN_PRIMES:
             primes = domain_info(domain, model)["primes"]
-            if len(primes) < 2 or not valence_result(domain, model)["rows"]:
+            if set(primes) != {row["prime"] for row in valence_result(domain, model)["rows"]}:
                 raise SystemExit(f"Incomplete valence data for {model}/{domain}")
-            if len(emotion_result(domain, model, *primes[:2])["rows"]) != 8:
+            if len(primes) >= 2 and len(emotion_result(domain, model, *primes[:2])["rows"]) != 8:
                 raise SystemExit(f"Incomplete emotion data for {model}/{domain}")
     source = Path(plotly.__file__).parent / "package_data" / "plotly.min.js"
     target = Path(__file__).parent / "public" / "vendor" / source.name

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from math import hypot
 from html import escape
 from textwrap import wrap
 
@@ -38,8 +39,8 @@ def field(label, control, persistence=True):
 def model_fields(prefix):
     options = [{"value": m, "label": label} for m, label in MODELS.items()]
     return [
-        field("Network", dcc.Dropdown(id=prefix + "-a", options=options, value="Humans", clearable=False)),
-        field("Compare with", dcc.Dropdown(id=prefix + "-b", options=options, placeholder="Choose another network")),
+        field("Network", dcc.Dropdown(id=prefix + "-a", options=options, optionHeight=56, value="Humans", clearable=False)),
+        field("Compare with", dcc.Dropdown(id=prefix + "-b", options=options, optionHeight=56, placeholder="Choose another network")),
     ]
 
 
@@ -55,6 +56,15 @@ def style_figure(fig, height):
     )
     fig.update_yaxes(gridcolor=GRID, zerolinecolor=GRID)
     return fig
+
+
+def model_axis(figure, models):
+    labels = [MODELS[m] for m in models]
+    lines = [wrap(label, width=14, break_long_words=False) for label in labels]
+    ticks = ["<br>".join(escape(part) for part in parts) for parts in lines]
+    figure.update_xaxes(type="category", tickmode="array", tickvals=labels, ticktext=ticks, tickangle=0,
+                        tickfont={"size": 11}, automargin=False)
+    figure.update_layout(margin_b=32 + 16 * max(map(len, lines)), margin_r=12)
 
 
 def graph(fig):
@@ -120,6 +130,8 @@ def render_ldt(a, b, target_index):
         xs, ys, detail = [], [], []
         for model in models:
             for trip, values in zip(triples, experiment["activation"][model]):
+                if values is None:
+                    continue
                 xs.append(MODELS[model])
                 ys.append(values[i])
                 detail.append([trip[0], trip[i+1], trip[i+3]])
@@ -134,9 +146,11 @@ def render_ldt(a, b, target_index):
     trip_detail = []
     if selected:
         trip = triples[target_index]
+        observed = {m: experiment["activation"][m][target_index] for m in models
+                    if experiment["activation"][m][target_index] is not None}
         for i, condition in enumerate(["Related", "Unrelated"]):
             figure.add_trace(go.Box(
-                x=[MODELS[m] for m in models], y=[experiment["activation"][m][target_index][i] for m in models],
+                x=[MODELS[m] for m in observed], y=[pair[i] for pair in observed.values()],
                 name=f"{trip[i+1]} → {trip[0]}", offsetgroup=condition, boxpoints="all",
                 pointpos=0, line={"width": 0}, marker={"color": INK, "symbol": "diamond-open", "size": 13},
                 showlegend=False, hovertemplate="%{y:.4f}<extra>%{fullData.name}</extra>"))
@@ -144,7 +158,7 @@ def render_ldt(a, b, target_index):
         for i, condition in enumerate(("Related", "Unrelated")):
             trip_rows.append([
                 condition, trip[i + 1], f"{trip[i + 3]:.3f}",
-                *[f"{experiment['activation'][model][target_index][i]:.4f}" for model in models],
+                *[f"{observed[model][i]:.4f}" if model in observed else "Unavailable" for model in models],
             ])
         trip_detail = [
             html.H3(f"Selected target · {trip[0]}"),
@@ -153,11 +167,13 @@ def render_ldt(a, b, target_index):
                          trip_rows, label=f"Observed RT and activation for {trip[0]}"),
         ]
     style_figure(figure, 390).update_layout(boxmode="group", yaxis_title="Normalized target activation")
+    model_axis(figure, models)
     table = []
     for model in MODELS:
         effect, pw, rho, ps = ldt_stats(model, experiment)
-        table.append([MODELS[model], len(triples), f"{effect:.3f}", format_p(pw),
-                      2*len(triples), f"{rho:.3f}", format_p(ps)])
+        count = sum(pair is not None for pair in experiment["activation"][model])
+        table.append([MODELS[model], count, f"{effect:.3f}" if effect is not None else "—", format_p(pw),
+                      2*count, f"{rho:.3f}" if rho is not None else "—", format_p(ps)])
     return [
         html.Section([html.H2("Target activation"), html.P(
             "LWOW Figure 3 · Each point is the normalized target activation for one prime–target condition."
@@ -167,7 +183,7 @@ def render_ldt(a, b, target_index):
                           "Spearman ρ", "Correlation p"], table, [MODELS[m] for m in models],
                          label="Table 6 priming effects and correlations"),
             html.P("One-sided signed-rank test of related minus unrelated activation, with effect z/√N. "
-                   "Spearman’s ρ compares both conditions with their measured human reaction times."),
+                   "Spearman’s ρ compares both conditions with their measured human reaction times. Pairs count triplets with the target and both primes in the network."),
             provenance(MODELS, "LDT"),
             html.A("Published Figure 3 and Table 6", href="https://www.nature.com/articles/s41597-025-05156-9#Fig3"),
         ], className="panel"),
@@ -279,7 +295,7 @@ def stimulus_editor(method, domain, session_targets=None):
     designs = paired_presets(domain)
     pairing_hint = []
     if isinstance(domain, dict) and not designs:
-        pairing_hint = [html.P("For a two-set comparison across all six networks, edit this domain "
+        pairing_hint = [html.P("For a two-set comparison across all available networks, edit this domain "
                                "and assign a separate target list to each of two primes.", className="hint")]
     if not names and not designs:
         words = session_targets.get(persistence) if isinstance(session_targets, dict) else None
@@ -340,23 +356,25 @@ def parse_pairs(text, primes):
 
 def model_bars(group, cohort, models, effects, marks, detail):
     highlights = dict(zip(models, [ACCENT, SECONDARY]))
+    labels = [MODELS[m] for m in cohort]
+    ticks = ["<br>".join(escape(line) for line in wrap(label, width=23)) for label in labels]
     figure = go.Figure(go.Bar(
-        x=[MODELS[m] for m in cohort], y=effects, name=group, text=marks, textposition="outside",
-        cliponaxis=False,
-        marker_color=[highlights.get(m, "#c4d1c9") for m in cohort], customdata=detail,
-        hovertemplate="%{x}<br>Effect %{y:.3f}<br>Paired observations %{customdata[0]}<br>p %{customdata[1]}<extra>%{fullData.name}</extra>",
+        y=labels, x=effects, orientation="h", name=group, text=marks, textposition="outside",
+        cliponaxis=False, marker_color=[highlights.get(m, "#c4d1c9") for m in cohort], customdata=detail,
+        hovertemplate="%{y}<br>Effect %{x:.3f}<br>Paired observations %{customdata[0]}<br>p %{customdata[1]}<extra></extra>",
     ))
-    return style_figure(figure, 330).update_layout(
-        showlegend=False, margin={"t": 18, "b": 70, "l": 60, "r": 15}, xaxis_tickangle=-25,
-        xaxis={"type": "category", "tickmode": "array", "tickvals": [MODELS[m] for m in cohort]},
-        yaxis_title="Signed-rank effect (z/√N)",
+    return style_figure(figure, max(330, 75 + 33 * len(labels))).update_layout(
+        showlegend=False, margin={"t": 12, "b": 52, "l": 40, "r": 16},
+        yaxis={"type": "category", "tickmode": "array", "tickvals": labels, "ticktext": ticks,
+               "categoryorder": "array", "categoryarray": labels, "autorange": "reversed", "automargin": True},
+        xaxis_title="Signed-rank effect (z/√N)",
     )
 
 
 def effect_panels(labels, charts):
-    has_negative = any(v is not None and v < 0 for fig in charts for v in fig.data[0].y)
+    has_negative = any(v is not None and v < 0 for fig in charts for v in fig.data[0].x)
     for fig in charts:
-        fig.update_yaxes(range=[-1.1 if has_negative else 0, 1.1])
+        fig.update_xaxes(range=[-1.1 if has_negative else 0, 1.1])
     return html.Div([
         html.Div([html.H3(label), graph(fig)], style={"minWidth": 0})
         for label, fig in zip(labels, charts)
@@ -365,11 +383,16 @@ def effect_panels(labels, charts):
 
 
 def gender_effect(models, groups, values, pairs, canonical):
-    # The figure and any edited version use the same six-network cohort.
+    # A model contributes when its matrix contains both primes of every selected pair.
     cohort = list(MODELS)
+    required = {prime for pair in pairs for prime in pair}
+    available = metadata("provenance")
+    eligible = [m for m in cohort if required.issubset(available[m]["gender"].get("primes", metadata("primes")))]
     rows, notes, charts = [], [], []
+    if len(eligible) < len(cohort):
+        notes.append(html.Li("Missing a selected prime: " + ", ".join(MODELS[m] for m in cohort if m not in eligible)))
     for group_index, (group, words) in enumerate(zip(GROUPS, groups)):
-        shared = [word for word in words if all(word in values[m] for m in cohort)]
+        shared = [word for word in words if eligible and all(word in values[m] for m in eligible)]
         missing = [word for word in words if word not in shared]
         notes.append(html.Li(f"{group}: {len(shared)}/{len(words)} targets. "
                              + ("Excluded: " + ", ".join(missing) + "." if missing else "All present.")))
@@ -379,7 +402,7 @@ def gender_effect(models, groups, values, pairs, canonical):
             differences = [
                 direction * (values[m][word][left] - values[m][word][right])
                 for word in shared for left, right in pairs
-            ]
+            ] if m in eligible else []
             effect, p = signed_rank(differences)
             effects.append(effect)
             stars = "" if p is None else ("***" if p < .001 else "**" if p < .01 else "*" if p < .05 else "")
@@ -388,8 +411,8 @@ def gender_effect(models, groups, values, pairs, canonical):
             rows.append([MODELS[m], group, len(differences), "—" if effect is None else f"{effect:.3f}", format_p(p)])
         charts.append(model_bars(group, cohort, models, effects, annotations, details))
     panels = effect_panels(GROUPS, charts)
-    scope = ("Paper preset · common targets across six networks." if canonical else
-             "Exploratory analysis · common targets across six networks.")
+    scope = ("Published gender word sets" if canonical else "Exploratory word sets") + (
+        f" · common targets across {len(eligible)} eligible networks.")
     interpretation = (
         "Positive effects indicate stronger activation by female primes for female-related targets or male primes for male-related targets."
         if canonical else
@@ -505,6 +528,7 @@ def contrast_results(models, targets, left, right, values):
             hovertemplate="%{x}<br>Signed-rank effect %{y:+.3f}<extra></extra>",
         ))
         style_figure(figure, 330).update_layout(showlegend=False, yaxis_title="Signed-rank effect (z/√N)")
+        model_axis(figure, models)
         figure.update_yaxes(range=[-1.1, 1.1])
         chart.append(graph(figure))
     return [
@@ -525,6 +549,20 @@ def contrast_results(models, targets, left, right, values):
 @lru_cache(maxsize=192)
 def paired_network(model, primes, targets):
     # Keep coverage and target rows together to load each weighted network once.
+    # Published non-gender stores already have each column normalized over all nodes.
+    # Renormalizing each row over the chosen pair cancels the full-domain row factor.
+    for domain, group in DOMAIN_PRIMES.items():
+        if domain != "gender" and all(prime in group for prime in primes):
+            info = domain_info(domain, model).copy()
+            info.update(primes=[p for p in primes if p in info["primes"]],
+                        missing_primes=[p for p in primes if p not in info["primes"]])
+            rows = domain_values(domain, targets, [model])[model]
+            values = {}
+            for word, row in rows.items():
+                pair = {p: row[p] for p in info["primes"]}
+                length = hypot(*pair.values())
+                values[word] = {p: v / length if length else 0.0 for p, v in pair.items()}
+            return info, values
     domain = {"primes": primes}
     info = domain_info(domain, model)
     values = domain_values(domain, targets, [model])[model]
@@ -673,8 +711,7 @@ def render_heatmaps(domain, a, b, first, second, selected_primes, paired_name=No
         labels = GROUPS if domain == "gender" else ["Target words"]
     charts = []
     for model in models:
-        missing = ((info[model] if info else domain_info(domain, model))["missing_primes"]
-                   if domain != "gender" else [])
+        missing = (info[model] if info else domain_info(domain, model))["missing_primes"]
         charts.append(html.H3(MODELS[model]))
         if pair and missing:
             charts.append(html.P("Paired heatmap unavailable. This graph lacks " + ", ".join(missing)

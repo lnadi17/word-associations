@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
@@ -33,7 +34,10 @@ def normalize_df(df: pd.DataFrame, normalize_rows: bool = False) -> pd.DataFrame
 
 def activation_dict(df_norm: pd.DataFrame, triplets: Iterable[Triplet]) -> Dict[Triplet, Tuple[float, float, float]]:
     out: Dict[Triplet, Tuple[float, float, float]] = {}
+    present = set(df_norm.columns[df_norm.ne(0).any()])
     for tgt, rel, un in triplets:
+        if tgt not in df_norm.index or rel not in present or un not in present:
+            continue
         rel_act = float(df_norm[rel].loc[tgt])
         un_act = float(df_norm[un].loc[tgt])
         out[(tgt, rel, un)] = (rel_act, un_act, rel_act - un_act)
@@ -47,7 +51,7 @@ def matrices_gender(df_norm: pd.DataFrame, rows: List[str], primes_f: List[str],
 def _steiger_z(r_12: float, r_13: float, r_23: float, n: int) -> Tuple[float, float]:
     """Steiger's Z test for comparing two dependent correlations (r_12 vs r_13, variable 1 in common).
     Returns (z_stat, p_value). p is one-tailed: P(Z > z) when r_12 > r_13."""
-    if n < 4:
+    if n < 4 or not (-1 < r_12 < 1 and -1 < r_13 < 1):
         return float("nan"), float("nan")
     z12 = math.atanh(r_12)
     z13 = math.atanh(r_13)
@@ -64,7 +68,7 @@ def _steiger_z(r_12: float, r_13: float, r_23: float, n: int) -> Tuple[float, fl
 
 
 def _wilcoxon_effect(data: List[float], alternative: str) -> Tuple[float, float]:
-    if len(data) == 0:
+    if not any(data):
         return float("nan"), float("nan")
     res = stats.wilcoxon(data, alternative=alternative, method="approx")
     p = float(res.pvalue)
@@ -132,13 +136,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run FA LDT/gender statistical tests.")
     parser.add_argument("--analyses-dir", default="data/LDT_analyses")
     parser.add_argument("--human-model", default="Humans")
+    parser.add_argument("--models", nargs="+", help="Limit analysis to these matrix file stems, including Humans")
+    parser.add_argument("--output-dir", type=Path, help="Override the cohort's statistical output directory")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
     analyses_dir = Path(args.analyses_dir)
     matrices_dir = analyses_dir / "FA_matrices"
-    stats_dir = analyses_dir / "Statistical_tests"
-    stats_dir.mkdir(parents=True, exist_ok=True)
 
     triplets_path = analyses_dir / "LDT_50_triplets.csv"
     gender_targets_path = analyses_dir / "gender_targets.csv"
@@ -154,18 +158,28 @@ def main() -> None:
         raise SystemExit(f"Missing gender primes file: {gender_primes_path}")
 
     models = _get_models(matrices_dir)
+    if args.models:
+        unknown = set(args.models) - set(models)
+        if unknown:
+            raise SystemExit(f"Missing matrices for: {sorted(unknown)}")
+        models = sorted(set(args.models))
     if not models:
         raise SystemExit(f"No matching *_LDT.csv and *_gender.csv files found in {matrices_dir}")
     if args.human_model not in models:
         raise SystemExit(f"Human model '{args.human_model}' not found. Available: {models}")
+    # Keep the archived six-network tables when running an expanded analysis.
+    archived = {"Humans", "Mistral", "Llama3", "Haiku", "Gemma", "Gpt5_mini"}
+    stats_dir = args.output_dir or analyses_dir / "Statistical_tests"
+    if args.output_dir is None and set(models) != archived:
+        stats_dir = stats_dir / ("selected_networks" if args.models else "all_networks")
+    stats_dir.mkdir(parents=True, exist_ok=True)
 
     if args.verbose:
         print("Models:", ", ".join(models))
 
     triplets, ldt_rt_dict = _load_triplets_robust(triplets_path)
 
-    ldt_dfs = {m: pd.read_csv(matrices_dir / f"{m}_LDT.csv") for m in models}
-    gender_dfs = {m: pd.read_csv(matrices_dir / f"{m}_gender.csv") for m in models}
+    gender_dfs = {m: pd.read_csv(matrices_dir / f"{m}_gender.csv", keep_default_na=False) for m in models}
 
     # Node intersection across all models from gender matrices.
     node_sets = [set(df["node"].astype(str).str.lower()) for df in gender_dfs.values()]
@@ -178,6 +192,9 @@ def main() -> None:
         ("girl", "boy"),
         ("feminine", "masculine"),
     ]
+    present_primes = set.intersection(*(set(frame.columns[1:][frame.iloc[:, 1:].ne(0).any()])
+                                        for frame in gender_dfs.values()))
+    gender_prime_pairs = [(a, b) for a, b in gender_prime_pairs if a in present_primes and b in present_primes]
     primes_f = [a for a, _ in gender_prime_pairs]
     primes_m = [b for _, b in gender_prime_pairs]
 
@@ -188,7 +205,8 @@ def main() -> None:
     # LDT activation stats by model.
     ldt_al_dicts = {}
     for model in models:
-        norm = normalize_df(ldt_dfs[model], normalize_rows=True)
+        frame = pd.read_csv(matrices_dir / f"{model}_LDT.csv", keep_default_na=False)
+        norm = normalize_df(frame, normalize_rows=True)
         ldt_al_dicts[model] = activation_dict(norm, triplets)
 
     wilcoxon_ldt = {}
@@ -201,9 +219,9 @@ def main() -> None:
     pd.DataFrame(wilcoxon_ldt).to_csv(stats_dir / "wilcoxonLDT.csv", index=True)
 
     corrs_ldt = {}
-    rt_rel = [x[0] for x in ldt_rt_dict.values()]
-    rt_un = [x[1] for x in ldt_rt_dict.values()]
     for model, d in ldt_al_dicts.items():
+        rt_rel = [ldt_rt_dict[key][0] for key in d]
+        rt_un = [ldt_rt_dict[key][1] for key in d]
         al_rel = [x[0] for x in d.values()]
         al_un = [x[1] for x in d.values()]
         r, p = spearmanr(np.concatenate([al_rel, al_un]), np.concatenate([rt_rel, rt_un]))
@@ -243,13 +261,13 @@ def main() -> None:
     for model in models:
         if model == args.human_model:
             continue
-        mat1f = np.concatenate(mat_gender[args.human_model]["Female-related targets"].values)
-        mat2f = np.concatenate(mat_gender[model]["Female-related targets"].values)
+        mat1f = mat_gender[args.human_model]["Female-related targets"].values.ravel()
+        mat2f = mat_gender[model]["Female-related targets"].values.ravel()
         rf, pf = spearmanr(mat1f, mat2f)
         models_corr_f[model] = {"r": rf, "p": pf}
 
-        mat1m = np.concatenate(mat_gender[args.human_model]["Male-related targets"].values)
-        mat2m = np.concatenate(mat_gender[model]["Male-related targets"].values)
+        mat1m = mat_gender[args.human_model]["Male-related targets"].values.ravel()
+        mat2m = mat_gender[model]["Male-related targets"].values.ravel()
         rm, pm = spearmanr(mat1m, mat2m)
         models_corr_m[model] = {"r": rm, "p": pm}
     pd.DataFrame(models_corr_f).to_csv(stats_dir / "corrModelsF.csv", index=True)
@@ -258,7 +276,7 @@ def main() -> None:
     # Pairwise correlation matrices (all models including Humans).
     llms = [m for m in models if m != args.human_model]
     for target_type in ["Female-related targets", "Male-related targets"]:
-        flat = {m: np.concatenate(mat_gender[m][target_type].values) for m in models}
+        flat = {m: mat_gender[m][target_type].values.ravel() for m in models}
         n = len(flat[models[0]])
         r_mat = pd.DataFrame(index=models, columns=models, dtype=float)
         for a in models:
@@ -291,6 +309,15 @@ def main() -> None:
         steiger_df = pd.DataFrame(steiger_rows)
         steiger_df.to_csv(stats_dir / f"steiger_{suffix}.csv", index=False)
 
+    coverage = {
+        "models": models, "human_reference": args.human_model,
+        "ldt": {model: {"used": len(observations), "total": len(triplets),
+                        "excluded": [triple for triple in triplets if triple not in observations]}
+                for model, observations in ldt_al_dicts.items()},
+        "gender_shared_across_cohort": {"prime_pairs": gender_prime_pairs, "female_targets": tgts_f,
+                                        "male_targets": tgts_m},
+    }
+    (stats_dir / "coverage.json").write_text(json.dumps(coverage, indent=2) + "\n", encoding="utf-8")
     if args.verbose:
         print(f"Wrote: {stats_dir / 'wilcoxonLDT.csv'}")
         print(f"Wrote: {stats_dir / 'corrLDT.csv'}")

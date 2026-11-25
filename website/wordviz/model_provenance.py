@@ -142,5 +142,8 @@ MODEL_PROVENANCE = {
         "sources": (file_source("Transformers generation script", "LAG/nemotron.py#L10-L45"),
                     file_source("Raw trial table", "LAG/lag_output/lag_results_Nemotron-3-Nano-30B-A3B-BF16.csv")),
     },
-    "gpt5_nano": {**openai_collection("nano"), "availability": "Partial raw collection only"},
+    "gpt5_nano": {
+        **openai_collection("nano"), "availability": "Partial raw collection only",
+        "details": (("Released raw table", "334,999 trials covering 3,350 of the 12,216 planned cues."),),
+    },
 }

@@ -173,6 +173,19 @@ Output: water, beach, sun
 5. Build edge counts: for each (cue, response) pair, count occurrences across trials.
 6. Write edge list to `edge_list_output_path` with columns: `src`, `tgt`, `wt`.
 
+#### Processing completed LAG collections
+
+`scripts/process_lag_collection.py` accepts a vLLM run directory with numbered CSV shards or a Transformers trial CSV. The November Gemma run uses the following dataset key and collection path.
+
+```bash
+python scripts/process_lag_collection.py gemma4_26b_uncensored_fp8 \
+  LAG/outputs/Gemma-4-26B-A4B-it-Uncensored-FP8_20261113_175503 --expected-cues 12216
+```
+
+The importer checks each cue's 100 trial numbers and rejects duplicate or missing trials. It counts a completed response when its first answer line contains three comma-separated lexical items of up to four words each. It uses the first three items of a longer list, accepts an explicit `Output:` prefix, and accepts an answer following a closed `</think>` tag. Blank responses, unfinished generations, and malformed lists contribute a blank trial. The per-collection JSON in `data/summary_tables/collection_audits/` records each outcome before normalization.
+
+The importer uses the same spelling dictionary, WordNet normalization, lemmatization, self-response removal, and within-trial deduplication as the FA cleaner. It aligns normalized cues to 100 trials using seed 42. It writes the cleaned `cue,R1,R2,R3` CSV in `data/processed/`. Filtered networks use the larger of the two directional counts for reciprocal links, keep WordNet nodes and edges with weight greater than one, and retain the largest connected component. Edge lists and GraphML files go in `data/graphs/`.
+
 ### Step 3: Analyze Embedding Distance
 
 **Script:** `scripts/analyze_embeddings.py`
@@ -219,3 +232,9 @@ For ~12,000 cues × 100 repetitions = 1.2M requests (Anthropic pricing: $5/MTok 
 - **Total: ~$700–800** (approximate)
 
 Batch processing can reduce this.
+
+## Download the processed research data
+
+Each finished network has a ZIP archive with its cleaned trials, weighted edge list, GraphML file, and full LDT and gender activation matrices. The eleven newly converted collections also include a processing audit. Extracting an archive into a new directory recreates the repository paths. Verify a download against the release's `SHA256SUMS`. [Network archives](https://github.com/lnadi17/word-associations/releases/tag/networks-2026-11-26)
+
+The expanded statistical tables and stimulus coverage are in `data/LDT_analyses/Statistical_tests/all_networks/`. To recreate the ZIPs from the materialized research files, run `python3.13 scripts/package_network_release.py --tag networks-2026-11-26 --output /tmp/word-association-networks` from the repository root.

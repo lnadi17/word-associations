@@ -7,14 +7,14 @@ from functools import lru_cache
 from pathlib import Path
 
 from .experiment_data import genders, suggest_targets
-from .models import MATRIX_MODELS
+from .models import MATRIX_KEYS, MATRIX_MODELS
 from .social_domains import DOMAIN_PRIMES
 
 STORE_DIR = Path(__file__).resolve().parent / "resources" / "social"
 
 
 def _connect(model):
-    if model not in MATRIX_MODELS:
+    if model not in MATRIX_KEYS:
         raise ValueError("Unknown activation model")
     return sqlite3.connect(f"{(STORE_DIR / (model + '.sqlite')).as_uri()}?mode=ro&immutable=1", uri=True)
 

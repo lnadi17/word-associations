@@ -1,4 +1,4 @@
-"""Directional tests, six-network coverage and the two target mappings."""
+"""Directional tests, cross-network coverage and the two target mappings."""
 
 from pathlib import Path
 import sys
@@ -38,20 +38,20 @@ class PairedStudyEffects(unittest.TestCase):
         charts = result[1].children
         self.assertEqual(len(charts), 2)
         for chart in charts:
-            self.assertEqual(list(chart.children[1].figure.data[0].x), list(MODELS.values()))
-        first = charts[0].children[1].figure.data[0].y
-        second = charts[1].children[1].figure.data[0].y
+            self.assertEqual(list(chart.children[1].figure.data[0].y), list(MODELS.values()))
+        first = charts[0].children[1].figure.data[0].x
+        second = charts[1].children[1].figure.data[0].x
         self.assertGreater(first[0], 0)
         self.assertEqual(second[0], -first[0])
         self.assertIsNone(first[list(MODELS).index("Gemma")])
         coverage = next(child for child in result if child.__class__.__name__ == "Ul")
-        self.assertIn("2/3 targets shared across 5", coverage.children[0].children)
+        self.assertIn(f"2/3 targets shared across {len(MODELS) - 1}", coverage.children[0].children)
         details = next(child for child in result if child.__class__.__name__ == "Details")
         rows = details.children[1].children.children[1].children
-        self.assertEqual(len(rows), 12)
+        self.assertEqual(len(rows), 2 * len(MODELS))
         self.assertEqual([c.children for c in rows[0].children][3:9],
                          [2, 2, "+1.000", "0.250", "1.000", "Exact sign permutation"])
-        self.assertIn("Missing prime", rows[2].children[-1].children)
+        self.assertIn("Missing prime", rows[list(MODELS).index("Gemma")].children[-1].children)
         self.assertIn("Remove", selection_problem("religion", "Humans", None, [["a"], ["t"]], pair))
         self.assertIn("one group", selection_problem("religion", "Humans", None, [["w"], ["w"]], pair))
 

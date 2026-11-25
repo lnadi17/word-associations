@@ -21,7 +21,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "website"))
 
-from wordviz.models import MATRIX_MODELS
+from wordviz.models import ARCHIVED_MATRICES, MATRIX_KEYS, MATRIX_MODELS
 from wordviz.social_data import STORE_DIR
 from wordviz.social_domains import DOMAIN_PRIMES
 
@@ -55,38 +55,44 @@ def spread_graph(graph, primes):
 def raw_domains(model):
     archived_path = ROOT / "data/LDT_analyses/FA_matrices" / f"{model}_gender.csv"
     gender = pd.read_csv(archived_path, keep_default_na=False).set_index("node")
-    yield "gender", gender, {
-        "source": archived_path.name, "sha256": hashlib.sha256(archived_path.read_bytes()).hexdigest(),
-        "steps": None, "nodes": len(gender),
-    }
     graph_path = ROOT / "data/graphs/igraphs" / f"FA_{model.lower()}_ig.graphml"
     primes = list(dict.fromkeys(p for group in DOMAIN_PRIMES.values() for p in group))
     levels, steps = spread_graph(ig.Graph.Read_GraphML(str(graph_path)), primes)
-    # Cross-check the sparse update against archived spreadr output. Some
-    # archived networks have a different vertex set from the current graph.
-    common = levels.index.intersection(gender.index)
-    checked_primes = sorted(set(gender.columns) & set(levels.columns))
-    current = levels.loc[common, checked_primes].to_numpy()
-    archived = gender.loc[common, checked_primes].to_numpy()
-    check = {
-        "archived_nodes": len(gender), "shared_nodes": len(common),
-        "matches_archive": bool(len(common) == len(gender) == len(levels)
-                                and np.allclose(current, archived, rtol=1e-9, atol=1e-10)),
-        "max_absolute_difference": float(np.abs(current - archived).max()),
+    gender = gender.loc[:, gender.ne(0).any()]
+    yield from domain_frames(archived_path, gender, graph_path, levels, steps,
+                             compare_archive=model in ARCHIVED_MATRICES)
+
+
+def domain_frames(gender_path, gender, graph_path, levels, steps, *, compare_archive=False):
+    yield "gender", gender, {
+        "source": gender_path.name, "sha256": hashlib.sha256(gender_path.read_bytes()).hexdigest(),
+        "steps": None if compare_archive else steps, "nodes": len(gender),
     }
     source = {
         "source": graph_path.name, "sha256": hashlib.sha256(graph_path.read_bytes()).hexdigest(),
-        "nodes": len(levels), "steps": steps, "gender_crosscheck": check,
+        "nodes": len(levels), "steps": steps,
     }
+    if compare_archive:
+        # Some archived networks have a different vertex set from the current graph.
+        common = levels.index.intersection(gender.index)
+        checked_primes = sorted(set(gender.columns) & set(levels.columns))
+        current = levels.loc[common, checked_primes].to_numpy()
+        archived = gender.loc[common, checked_primes].to_numpy()
+        source["gender_crosscheck"] = {
+            "archived_nodes": len(gender), "shared_nodes": len(common),
+            "matches_archive": bool(len(common) == len(gender) == len(levels)
+                                    and np.allclose(current, archived, rtol=1e-9, atol=1e-10)),
+            "max_absolute_difference": float(np.abs(current - archived).max()),
+        }
     for domain, group in DOMAIN_PRIMES.items():
         if domain != "gender":
             yield domain, levels[[p for p in group if p in levels.columns]], source.copy()
 
 
-def build_model(model, output, raw_output=None):
+def build_model(model, output, raw_output=None, *, domains=None):
     metadata = {}
     matrices = []
-    for domain, raw, info in raw_domains(model):
+    for domain, raw, info in (raw_domains(model) if domains is None else domains):
         if raw_output:
             model_dir = raw_output / model
             model_dir.mkdir(parents=True, exist_ok=True)
@@ -128,12 +134,12 @@ def build_model(model, output, raw_output=None):
         os.replace(path, output / f"{model}.sqlite")
     finally:
         path.unlink(missing_ok=True)
-    print(f"{model}: {len(packed):,} nodes; {info['steps']} steps; {info['gender_crosscheck']}", flush=True)
+    print(f"{model}: {len(packed):,} nodes, {info['steps']} steps", flush=True)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--models", nargs="+", choices=MATRIX_MODELS, default=list(MATRIX_MODELS))
+    parser.add_argument("--models", nargs="+", choices=MATRIX_KEYS, default=list(MATRIX_MODELS))
     parser.add_argument("--output", type=Path, default=STORE_DIR)
     parser.add_argument("--raw-output", type=Path, help="Also export full raw matrices for offline analyses.")
     args = parser.parse_args()

@@ -34,7 +34,8 @@ class ModelProvenanceTests(unittest.TestCase):
                 if label == "Run files":
                     folder = url.split("/LAG/outputs/")[1].removesuffix("/outputs")
                     represented.append(folder)
-                    self.assertNotIn(key, GRAPH_MODELS)
+                    self.assertEqual(key in GRAPH_MODELS, (ROOT / "website/wordviz/resources/explore" / f"{key}.zip").is_file()
+                                     and (ROOT / "website/wordviz/resources/paths" / f"{key}.json.gz").is_file())
                     self.assertIn(f'"{record["identifier"]}"', config)
                     self.assertEqual(folder.rsplit("_", 2)[0], record["identifier"].split("/")[-1])
         self.assertCountEqual(represented, directories)

@@ -183,7 +183,8 @@ def lemmatization(df: pd.DataFrame, lemmatizer: Any) -> pd.DataFrame:
     """Lemmatize and apply manual corrections (men->man, hands->hand)."""
     out = df.copy()
     for col in _COLS:
-        out[col] = [_lemmatize_cell(x, lemmatizer) for x in out[col]]
+        lemmas = {x: _lemmatize_cell(x, lemmatizer) for x in out[col].unique()}
+        out[col] = out[col].map(lemmas)
     return out
 
 
@@ -259,8 +260,9 @@ def cue100(
 
     if over:
         rows_to_drop: List[int] = []
+        grouped = df.groupby("cue", sort=False).groups
         for c, count in over.items():
-            idx = df[df["cue"] == c].index.tolist()
+            idx = grouped[c].tolist()
             surplus = count - repetitions
             rows_to_drop.extend(rng.sample(idx, surplus))
         df = df.drop(rows_to_drop)
@@ -314,7 +316,18 @@ def cleaning_pipeline(
     repetitions_per_cue: int = 100,
 ) -> pd.DataFrame:
     """Run full FA cleaning pipeline. Returns DataFrame with cue,R1,R2,R3."""
-    df = raw_rows_to_dataframe(rows)
+    return clean_trial_frame(raw_rows_to_dataframe(rows), spelling_dict, spelling_dict_path,
+                             seed, repetitions_per_cue)
+
+
+def clean_trial_frame(
+    df: pd.DataFrame,
+    spelling_dict: Optional[Dict[str, str]] = None,
+    spelling_dict_path: Optional[str | Path] = None,
+    seed: int = 30,
+    repetitions_per_cue: int = 100,
+) -> pd.DataFrame:
+    """Apply the same FA cleaning steps to a parsed cue,R1,R2,R3 table."""
     if df.empty:
         return pd.DataFrame(columns=_COLS)
 

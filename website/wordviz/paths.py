@@ -56,9 +56,9 @@ def layout(domain="gender", primary_model="humans", comparison_model=None):
                + note),
         html.Div([
             _field("Path model", dcc.Dropdown(
-                id="path-a", options=MODEL_OPTIONS, value=primary_model, clearable=False)),
+                id="path-a", options=MODEL_OPTIONS, optionHeight=56, value=primary_model, clearable=False)),
             _field("Compare path model", dcc.Dropdown(
-                id="path-b", options=MODEL_OPTIONS, value=comparison_model, placeholder="Single graph")),
+                id="path-b", options=MODEL_OPTIONS, optionHeight=56, value=comparison_model, placeholder="Single graph")),
             *extra_fields,
             _field("Starting words", dcc.Dropdown(
                 id="path-start", value=list(starts),

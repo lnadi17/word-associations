@@ -1,0 +1,89 @@
+{
+  "tag": "networks-2026-11-26",
+  "networks": {
+    "gemma": {
+      "sha256": "07570ccb4739ceea98457916c4b4056dd3a843d3479c0e786acc8672b4cb3e70",
+      "bytes": 15002921
+    },
+    "gpt5_mini": {
+      "sha256": "ee0a30b2f0741bdbb8324540b1d3cfda0fbd729c3b09222d7f7bf55894add425",
+      "bytes": 19045835
+    },
+    "haiku": {
+      "sha256": "a851c65fdfd3adc45e2f9483007730f04dd50c3c50b0f8509de3823c66f42f7c",
+      "bytes": 16080722
+    },
+    "humans": {
+      "sha256": "d08262f095722cee2f6f973ea7e0e45e1bb7989e7a3e2b468f90dca410e79620",
+      "bytes": 34202061
+    },
+    "llama3": {
+      "sha256": "766c2cf4c24102fdac6fd30d01411bf8386eddc93491c596578f7bc45e8f6451",
+      "bytes": 47120126
+    },
+    "mistral": {
+      "sha256": "3040f055f779f0506ea5c06755f200b16e13b33dda2a105fcb72efba06410ce8",
+      "bytes": 25674760
+    },
+    "gemma4_12b": {
+      "sha256": "d12665da76f01d836a71bcb303f21028f0912524354474f039ef1cc6e3e0fdd3",
+      "bytes": 14534271
+    },
+    "gemma4_26b": {
+      "sha256": "3207e0db87f8d2ee861f67bfa7301c12299fc47033024b7d139dff71032c1a1c",
+      "bytes": 15036832
+    },
+    "gemma4_26b_uncensored_fp8": {
+      "sha256": "f198f091a41a4899c0f5ce42cccc0b96a33df272c862a93adb80c0603768c273",
+      "bytes": 15064875
+    },
+    "gemma4_e2b": {
+      "sha256": "7c4b4f66936cf9ffd5abb5e036b8fa575202563d38b0e44285c48433c9a277df",
+      "bytes": 15701304
+    },
+    "gemma4_e4b": {
+      "sha256": "ba96a3a5f113a5f5c8ac728e8492eaec3e755bbdf34159298e96e9c380198958",
+      "bytes": 19260420
+    },
+    "kona2_12b": {
+      "sha256": "036b609dd39366cc3380747d3ce06d3fd4ae7dd87630789084f826d9cb50fb7b",
+      "bytes": 30240766
+    },
+    "llama3_1_8b": {
+      "sha256": "977763638f00adec32f70aad8562534b27c27dd4713a8c17575e59d07cc64091",
+      "bytes": 23934272
+    },
+    "llama3_2_3b": {
+      "sha256": "a3bf375ce1e12431ac4329850a2fa678696132b77018737c73c140e9707a31c6",
+      "bytes": 23771478
+    },
+    "nemotron35_lightning30b": {
+      "sha256": "92a7b456c02fea2b738e99eb1b4b301786946798c1eb286b24a3639ab34c66cf",
+      "bytes": 25392365
+    },
+    "nemotron3_nano30b_transformers": {
+      "sha256": "e75fcce86d700047317cf1de8e51ff4166e313621ec57422975686e729bc7da7",
+      "bytes": 29210700
+    },
+    "nemotron3_nano30b_vllm": {
+      "sha256": "ef98005165d26efd4e538206d667d13e4eee614ae6cfa0aa2832a0cba69b62cd",
+      "bytes": 29339909
+    },
+    "nemotron3_nano4b": {
+      "sha256": "19489639bbf92fcb7feb7b1fc0a86881040ded23e2b0e3e9316b51526cca50b9",
+      "bytes": 28287628
+    },
+    "qwen2_5_7b": {
+      "sha256": "cda2821f1117376fbf3633b400b61730673856693e06796d25c9ff91a9953f08",
+      "bytes": 18479324
+    },
+    "qwen38_27b_fp8": {
+      "sha256": "261012eccd7d5e4d80e81ab97a1c90090f6033783f1513a3e05d91e31342f5f4",
+      "bytes": 21620771
+    },
+    "qwen38_27b_uncensored_fp8": {
+      "sha256": "620ff44514c3fa816c46cada94e0020404e539e2bf47b7070927b1911c6ef2e5",
+      "bytes": 22190355
+    }
+  }
+}

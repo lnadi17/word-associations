@@ -34,16 +34,20 @@ def metadata(key):
 
 
 def genders(words):
-    """Look up only requested target rows, across all six archived networks."""
+    """Look up only requested target rows, across the available networks."""
     result = {model: {} for model in MODELS}
     if not words:
         return result
-    primes = metadata("primes")
+    provenance = metadata("provenance")
+    default_primes = metadata("primes")
     placeholders = ",".join("?" for _ in words)
     with closing(connect()) as conn:
         for node, model, blob in conn.execute(
             f"SELECT node, model, vector FROM gender WHERE node IN ({placeholders})", words
         ):
+            if model not in result:
+                continue
+            primes = provenance[model]["gender"].get("primes", default_primes)
             result[model][node] = dict(zip(primes, struct.unpack(f"<{len(primes)}d", blob)))
     return result
 
@@ -128,10 +132,12 @@ def two_sided_signed_rank(differences):
 
 
 def ldt_stats(model, experiment):
-    observations = experiment["activation"][model]
+    pairs = [(trip, values) for trip, values in zip(experiment["triplets"], experiment["activation"][model])
+             if values is not None]
+    observations = [values for _, values in pairs]
     effect, wp = signed_rank([related - unrelated for related, unrelated in observations])
     activation = [v for pair in observations for v in pair]
-    rt = [v for trip in experiment["triplets"] for v in trip[3:]]
+    rt = [v for trip, _ in pairs for v in trip[3:]]
     n = len(activation)
     ar, rr = ranks(activation), ranks(rt)
     center = (n + 1) / 2

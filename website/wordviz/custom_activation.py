@@ -1,4 +1,4 @@
-"""Spreading activation for user-selected graph nodes on the six current networks."""
+"""Spreading activation for user-selected graph nodes on the packaged networks."""
 
 import gzip
 import hashlib

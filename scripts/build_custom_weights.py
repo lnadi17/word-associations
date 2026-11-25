@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "website"))
 
 from wordviz.custom_activation import WEIGHTS_DIR
-from wordviz.models import MATRIX_MODELS
+from wordviz.models import MATRIX_KEYS
 from wordviz.path_data import GRAPH_DIR, load_graph
 from wordviz.social_data import domain_info
 
@@ -72,8 +72,8 @@ def build(model, destination):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--models", nargs="+", choices=MATRIX_MODELS, default=list(MATRIX_MODELS))
+    parser.add_argument("--models", nargs="+", choices=MATRIX_KEYS)
     parser.add_argument("--output", type=Path, default=WEIGHTS_DIR)
     args = parser.parse_args()
-    for model in args.models:
+    for model in args.models or [key for key in MATRIX_KEYS if (WEIGHTS_DIR.parent / "social" / f"{key}.sqlite").is_file()]:
         build(model, args.output)

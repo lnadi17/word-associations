@@ -17,7 +17,8 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "website"))
-from wordviz.experiment_data import MODELS, STORE
+from wordviz.experiment_data import STORE
+from wordviz.models import MATRIX_KEYS
 from run_fa_statistical_tests import normalize_df
 
 ANALYSES = ROOT / "data" / "LDT_analyses"
@@ -48,7 +49,10 @@ def build(destination=STORE):
             primes = [r["genderWord"] for r in read_csv("gender_primes.csv")]
             provenance = {}
             activation = {}
-            for model in MODELS:
+            for model in MATRIX_KEYS:
+                if not all((ANALYSES / "FA_matrices" / f"{model}_{task}.csv").is_file()
+                           for task in ("LDT", "gender")):
+                    continue
                 provenance[model] = {}
                 for task in ("LDT", "gender"):
                     source = ANALYSES / "FA_matrices" / f"{model}_{task}.csv"
@@ -63,16 +67,19 @@ def build(destination=STORE):
                     if task == "LDT":
                         activation[model] = [
                             [norm.at[target, related], norm.at[target, unrelated]]
+                            if target in norm.index and related in norm and unrelated in norm else None
                             for target, related, unrelated, *_ in triplets
                         ]
                     else:
-                        if set(norm.columns) != set(primes):
+                        if not set(norm.columns).issubset(primes):
                             raise ValueError(f"Unexpected prime columns in {source}")
-                        vector = struct.Struct(f"<{len(primes)}d")
+                        present = [p for p in primes if p in norm.columns]
+                        provenance[model][task]["primes"] = present
+                        vector = struct.Struct(f"<{len(present)}d")
                         db.executemany(
                             "INSERT INTO gender VALUES (?, ?, ?)",
                             ((node, model, vector.pack(*row))
-                             for node, *row in norm[primes].itertuples(name=None)),
+                             for node, *row in norm[present].itertuples(name=None)),
                         )
             info = {
                 "ldt": {"triplets": triplets, "activation": activation},

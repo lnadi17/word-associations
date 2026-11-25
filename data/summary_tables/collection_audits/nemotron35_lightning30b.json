@@ -1,0 +1,16 @@
+{
+  "raw_cues": 12216,
+  "raw_rows": 1221600,
+  "input_files": 48,
+  "parse_outcomes": {
+    "accepted": 1221156,
+    "finish_length": 16,
+    "incomplete_list": 274,
+    "nonlexical_list": 154
+  },
+  "clean_cues": 11538,
+  "clean_rows": 1153800,
+  "nonblank_responses": 3429593,
+  "filtered_nodes": 17539,
+  "filtered_edges": 230833
+}

@@ -198,7 +198,7 @@ def _form(record):
         *([html.P("Choosing a template fills the primes and replaces the target lists in this draft.",
                   className="hint")] if creating else []),
         html.H3("Target word lists (optional)"),
-        html.P("To compare two target sets across all six networks, assign a different expected prime to each list. "
+        html.P("To compare two target sets across all available networks, assign a different expected prime to each list. "
                f"Enter up to {MAX_TARGETS} words per list. Word valence and Emotion word sets only need primes.",
                className="hint"),
         html.Div([_list_row(title, words, record.get("list_primes", {}).get(title, ""))

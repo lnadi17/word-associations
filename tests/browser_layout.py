@@ -2,6 +2,11 @@
 
 import argparse
 import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "website"))
+from wordviz.models import GRAPH_MODELS, MATRIX_MODELS
 
 from playwright.sync_api import expect, sync_playwright
 
@@ -111,9 +116,9 @@ def check_page(page, url):
     expect(page.locator("#bias-targets-1 .Select-value-label")).to_have_count(25)
     expect(page.locator("#bias-targets-0 .Select-value-label")).to_have_count(25)
     research_title = paired_title.inner_text()
-    expect(page.locator("#effect-results table tbody tr")).to_have_count(12)
+    expect(page.locator("#effect-results table tbody tr")).to_have_count(2 * len(MATRIX_MODELS))
     for chart in page.locator("#effect-results .dash-graph").all():
-        expect(chart.locator(".xtick")).to_have_count(6)
+        expect(chart.locator(".ytick")).to_have_count(len(MATRIX_MODELS))
     choose(page, "target-preset", "Perceived religiousness")
     choose(page, "effect-left", "christian")
     choose(page, "effect-right", "muslim")
@@ -153,6 +158,51 @@ def check_page(page, url):
     check_primes_only_domain(page, methods)
     check_research_template(page, methods, research_title)
     check_model_details(page)
+    if "gemma4_26b_uncensored_fp8" in MATRIX_MODELS:
+        check_variant_network(page)
+
+
+def check_variant_network(page):
+    key = "gemma4_26b_uncensored_fp8"
+    variant = GRAPH_MODELS[key]
+    page.get_by_role("link", name="Explore", exact=True).click()
+    search_model(page, "ex-model-a", variant)
+    expect(page.locator(".series-legend")).to_contain_text(variant)
+    page.get_by_text("2D graph", exact=True).click()
+    check_chart(page.locator(".explorer-network .dash-graph").first, ".scatterlayer .point", 295)
+    page.get_by_role("link", name="Lexical decision").click()
+    search_model(page, "ldt-a", variant)
+    expect(page.locator("#ldt-results .selected-row").filter(has_text=variant)).to_have_count(1)
+    long_keys = ["nemotron3_nano30b_transformers", "nemotron3_nano30b_vllm"]
+    if all(m in MATRIX_MODELS for m in long_keys):
+        labels = [MATRIX_MODELS[m] for m in long_keys]
+        for control, label in zip(("ldt-a", "ldt-b"), labels):
+            search_model(page, control, label)
+        result = page.locator("#ldt-results")
+        expect(result.locator(".selected-row")).to_have_count(2)
+        for label in labels:
+            expect(result.locator(".selected-row").filter(has_text=label)).to_have_count(1)
+        host = result.locator(".dash-graph")
+        check_chart(host, ".boxlayer .point", 380)
+        expect(host.locator(".xtick")).to_have_count(2)
+        assert host.evaluate("""el => {
+            const rect = el.getBoundingClientRect();
+            const ticks = [...el.querySelectorAll('.xtick text')].map(t => t.getBoundingClientRect());
+            return ticks.every(t => t.left >= rect.left - 1 && t.right <= rect.right + 1 &&
+                                     t.bottom <= rect.bottom + 1) && ticks[0].right <= ticks[1].left;
+        }""")
+    page.get_by_role("link", name="Implicit bias").click()
+    search_model(page, "social-a", variant)
+    page.locator("#bias-view").get_by_text("Heatmaps", exact=True).click()
+    expect(page.locator("#heat-results h3").first).to_have_text(variant)
+    check_chart(page.locator("#heat-results .dash-graph").first, ".heatmaplayer image", 320)
+    check_width(page)
+
+
+def search_model(page, control_id, label):
+    dropdown = page.locator("#" + control_id)
+    dropdown.locator("input").fill(label)
+    dropdown.locator(".Select-menu-outer").get_by_text(label, exact=True).click()
 
 
 def check_model_details(page):
@@ -163,8 +213,10 @@ def check_model_details(page):
     served.locator("summary").press("Enter")
     expect(served.locator("dt", has_text="Version or revision")).to_be_visible()
     expect(served.locator("dd a").first).to_have_attribute("href", re.compile("^https://"))
+    latest = "gemma4_26b_uncensored_fp8"
+    group = "Analysis datasets" if latest in GRAPH_MODELS else "Additional collections"
     pending = page.locator(".model-catalog section").filter(
-        has=page.get_by_role("heading", name="Additional collections")
+        has=page.get_by_role("heading", name=group)
     ).locator("#model-gemma4_26b_uncensored_fp8")
     identifier = pending.locator("summary code")
     expect(identifier).to_have_text("orcarouter/Gemma-4-26B-A4B-it-Uncensored-FP8")
@@ -192,7 +244,7 @@ def check_custom_domain(page, methods):
     expect(page.locator("#social-domain .Select-value-label")).to_have_text("Age associations")
     methods.get_by_text("Priming effects", exact=True).click()
     expect(page.locator("#effect-results .dash-graph")).to_have_count(2)
-    expect(page.locator("#effect-results table tbody tr")).to_have_count(12)
+    expect(page.locator("#effect-results table tbody tr")).to_have_count(2 * len(MATRIX_MODELS))
     expect(page.locator("#effect-results")).to_contain_text("2/2 targets")
     choose(page, "target-preset", "Energy")
     expect(page.locator("#effect-results")).to_contain_text("2/2 targets")
@@ -307,7 +359,7 @@ def check_research_template(page, methods, title):
         assert len(words.input_value().split(",")) == 25
     page.locator("#custom-save").click()
     expect(page.locator("#social-domain")).to_contain_text("Replication")
-    expect(page.locator("#effect-results table tbody tr")).to_have_count(12)
+    expect(page.locator("#effect-results table tbody tr")).to_have_count(2 * len(MATRIX_MODELS))
     expect(page.locator("#target-editor a").first).to_be_visible()
     evidence = page.locator("#target-editor").get_by_role("link", name="Target rankings and nomination counts (CSV)")
     response = page.request.get(evidence.evaluate("link => link.href"))

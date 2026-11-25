@@ -46,6 +46,18 @@ class CustomActivationTests(unittest.TestCase):
         self.assertEqual(info["missing_primes"], [primes[3]])
         self.assertEqual(info["primes"], list(available))
 
+    def test_saved_domain_pair_matches_arbitrary_prime_propagation(self):
+        from wordviz.experiments import paired_network
+
+        primes, targets = ("christian", "muslim"), ("church", "school", "honest")
+        info, subset = paired_network("Humans", primes, targets)
+        complete = custom_values(primes, targets, ["Humans"])["Humans"]
+        self.assertEqual(info["primes"], list(primes))
+        self.assertEqual(set(subset), set(complete))
+        for word in targets:
+            np.testing.assert_allclose(list(subset[word].values()), list(complete[word].values()),
+                                       rtol=1e-12, atol=1e-12)
+
     def test_empty_and_oversize_inputs(self):
         words, available, raw = raw_columns("Gemma", ["unknown-prime-for-testing"])
         self.assertEqual(raw.shape, (len(words), 0))

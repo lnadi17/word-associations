@@ -6,6 +6,13 @@
 lwow_repro/
 data/campaigns/
 data/runs/
+# New full research outputs ship as per-network release archives.
+# Previously tracked inputs and published baseline files keep their Git history.
+data/processed/*_processed.csv
+data/graphs/edge_lists/FA_*_edgelist.csv
+data/graphs/igraphs/FA_*_ig.graphml
+data/LDT_analyses/FA_matrices/*_LDT.csv
+data/LDT_analyses/FA_matrices/*_gender.csv
 LAG/logs/
 
 # Byte-compiled / optimized / DLL files

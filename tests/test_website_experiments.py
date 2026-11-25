@@ -9,13 +9,18 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "website"))
 
+from wordviz.models import ARCHIVED_MATRICES
 from wordviz.experiment_data import DEFAULT_PAIRS, MODELS, genders, ldt_stats, metadata, signed_rank
 
 
-def reference(name):
-    path = ROOT / "data" / "LDT_analyses" / "Statistical_tests" / name
+def reference(name, cohort=""):
+    path = ROOT / "data" / "LDT_analyses" / "Statistical_tests" / cohort / name
     with path.open(newline="") as stream:
-        return {r[""]: r for r in csv.DictReader(stream)}
+        rows = {}
+        for record in csv.DictReader(stream):
+            name = record.pop("")
+            rows[name] = record
+        return rows
 
 
 class ArchivedExperiments(unittest.TestCase):
@@ -28,7 +33,7 @@ class ArchivedExperiments(unittest.TestCase):
         self.assertEqual(len(ldt["triplets"]), 50)
         wilcoxon = reference("wilcoxonLDT.csv")
         correlation = reference("corrLDT.csv")
-        for model in MODELS:
+        for model in wilcoxon["effect"]:
             with self.subTest(network=model):
                 effect, wp, rho, sp = ldt_stats(model, ldt)
                 self.assert_reference(effect, wilcoxon["effect"][model])
@@ -43,9 +48,11 @@ class ArchivedExperiments(unittest.TestCase):
             (1, "wilxoconGenderF.csv", 23), (-1, "wilxoconGenderM.csv", 25)
         ]):
             expected = reference(filename)
-            words = [word for word in groups[group] if all(word in values[m] for m in MODELS)]
-            self.assertEqual(len(words), n_targets)
-            for model in MODELS:
+            cohort = list(expected["effect"])
+            words = [word for word in groups[group] if all(word in values[m] for m in cohort)]
+            archived_words = [word for word in groups[group] if all(word in values[m] for m in ARCHIVED_MATRICES)]
+            self.assertEqual(len(archived_words), n_targets)
+            for model in cohort:
                 with self.subTest(group=group, model=model):
                     differences = [
                         direction * (values[model][w][left] - values[model][w][right])
@@ -54,6 +61,30 @@ class ArchivedExperiments(unittest.TestCase):
                     effect, p = signed_rank(differences)
                     self.assert_reference(effect, direction * float(expected["effect"][model]))
                     self.assert_reference(p, expected["p"][model])
+
+    def test_expanded_network_statistics_match_offline_analysis(self):
+        if set(MODELS) == set(ARCHIVED_MATRICES):
+            self.skipTest("Only the archived cohort is packaged.")
+        wilcoxon = reference("wilcoxonLDT.csv", "all_networks")
+        correlation = reference("corrLDT.csv", "all_networks")
+        self.assertEqual(set(wilcoxon["effect"]), set(MODELS))
+        experiment = metadata("ldt")
+        for model in MODELS:
+            with self.subTest(model=model):
+                effect, p, rho, correlation_p = ldt_stats(model, experiment)
+                self.assert_reference(effect, wilcoxon["effect"][model])
+                self.assert_reference(p, wilcoxon["p"][model])
+                self.assert_reference(rho, correlation["r"][model])
+                self.assert_reference(correlation_p, correlation["p"][model])
+
+    def test_missing_ldt_triplet_excludes_its_measured_reaction_times(self):
+        trips = [["a", "b", "c", 1., 5.], ["d", "e", "f", 0., 9.], ["g", "h", "i", 2., 4.]]
+        values = [[0.8, 0.2], None, [0.7, 0.3]]
+        actual = ldt_stats("example", {"triplets": trips, "activation": {"example": values}})
+        expected = ldt_stats("example", {"triplets": trips[::2], "activation": {"example": values[::2]}})
+        self.assertEqual(actual, expected)
+        self.assertEqual(ldt_stats("example", {"triplets": trips, "activation": {"example": [None]*3}}),
+                         (None, None, None, None))
 
     def test_tied_ranks_and_zero_differences(self):
         # Two tied values have average rank 1.5. The zero participates in
@@ -64,14 +95,16 @@ class ArchivedExperiments(unittest.TestCase):
         self.assertEqual(signed_rank([0, 0]), (None, None))
         self.assertEqual(signed_rank([]), (None, None))
 
-    def test_reordered_preset_retains_six_network_cohort(self):
+    def test_reordered_preset_retains_common_network_cohort(self):
         from wordviz.experiments import render_effect
 
         female, male = metadata("targets")
         pairs = ", ".join(f"{left}/{right}" for left, right in reversed(DEFAULT_PAIRS))
         effect_panel = render_effect("gender", "Haiku", "Mistral", female[::-1], male, pairs, None, None)
         coverage = next(child for child in effect_panel.children if child.__class__.__name__ == "Ul")
-        self.assertIn("23/25", coverage.children[0].children)
+        values = genders(female)
+        shared = sum(all(word in values[m] for m in MODELS) for word in female)
+        self.assertIn(f"{shared}/25", coverage.children[0].children)
 
     def test_effect_charts_reserve_the_figure_height_in_the_grid(self):
         from wordviz.experiments import gender_effect
@@ -122,7 +155,7 @@ class ArchivedExperiments(unittest.TestCase):
                     self.assertTrue(preset.study.url.startswith("https://"))
                     self.assertTrue(preset.study.context)
                     self.assertEqual(len(set(preset.words)), len(preset.words))
-                    for model in MODELS:
+                    for model in ARCHIVED_MATRICES:
                         self.assertTrue(set(preset.words).issubset(rows[model]), model)
 
     def test_heatmap_separates_missing_data_and_observed_zero(self):

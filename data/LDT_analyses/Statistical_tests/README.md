@@ -1,6 +1,15 @@
 # FA Statistical Test Results
 
-Summary of spreading-activation and lexical-decision-task (LDT) analyses across association networks (Humans, Gemma, Gpt5_mini, Haiku, Llama3, Mistral).
+This page and its adjacent CSVs report the original six association networks (Humans, Gemma, Gpt5_mini, Haiku, Llama3, Mistral). The [expanded-cohort tables](all_networks/) include all finished networks. Their [coverage file](all_networks/coverage.json) records the LDT triplets available for each network, the gender targets shared across the cohort and the prime pairs used. Each LDT correlation pairs activation with the observed human reaction time for the same target and prime.
+
+To generate matrices for a new filtered GraphML network and regenerate the expanded statistics, run from the repository root:
+
+```sh
+python scripts/run_spreading_activation.py --models MODEL_KEY --raw-output /tmp/word-associations-social
+python scripts/run_fa_statistical_tests.py
+```
+
+The activation runner propagates all available LDT, gender and social primes in one sparse update per time step and writes `MODEL_KEY_LDT.csv` and `MODEL_KEY_gender.csv` under `data/LDT_analyses/FA_matrices`. The original six tables can be reproduced separately with `--models Humans Gpt5_mini Gemma Haiku Llama3 Mistral --output-dir /tmp/original-six` on the statistical command.
 
 ---
 

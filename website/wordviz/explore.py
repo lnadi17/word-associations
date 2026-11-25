@@ -30,9 +30,9 @@ def layout():
             html.Div([
                 _field("Words (up to 4)", dcc.Dropdown(id="ex-words", options=["cat"], value=["cat"],
                                                        multi=True, placeholder="Search and add words")),
-                _field("Model", dcc.Dropdown(id="ex-model-a", options=MODEL_OPTIONS, value="humans",
+                _field("Model", dcc.Dropdown(id="ex-model-a", options=MODEL_OPTIONS, optionHeight=56, value="humans",
                                              clearable=False)),
-                _field("Compare model", dcc.Dropdown(id="ex-model-b", options=MODEL_OPTIONS,
+                _field("Compare model", dcc.Dropdown(id="ex-model-b", options=MODEL_OPTIONS, optionHeight=56,
                                                      placeholder="Add a model")),
             ], className="controls explorer-primary"),
             html.Div([

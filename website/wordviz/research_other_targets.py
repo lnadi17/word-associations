@@ -21,7 +21,7 @@ def _orientation(first, second, primes, nominations, first_words, second_words):
             "This explorer ranks each term by the difference in its share of all coded nominations for the two "
             "groups. Each side retains up to 25 terms with a positive difference and at least two nominations "
             "on that side. Ties favor more nominations, then alphabetical order. We use single-word codes "
-            "present in all six graphs, taking the first label when all slash-separated alternatives are "
+            "present in the six original analysis graphs, taking the first label when all slash-separated alternatives are "
             "single words. Orientation labels are excluded. The study asked about gender-specific groups. "
             "The graph primes are single words without that gender qualifier. These terms describe reported "
             "social stereotypes, including stigmatizing ones."
@@ -111,7 +111,7 @@ STUDIES = {
                 "prompts. Each person counts once per word per party. A term must favor the same party in "
                 "both waves and have at least ten nominators on that side overall. Each list takes the 25 "
                 "largest pooled differences in respondent counts, breaking ties by number of nominators on "
-                "that side, then alphabetically. Terms must occur in all six graphs. Party labels are excluded. "
+                "that side, then alphabetically. Terms must occur in the six original analysis graphs. Party labels are excluded. "
                 "Descriptors can refer to traits, demographics, symbols or issues. The rankings summarize "
                 "respondents’ associations in these two surveys."
             ),

@@ -1,4 +1,4 @@
-"""Build compact read-only word indexes from the ten cleaned trial tables."""
+"""Build compact read-only word indexes from the cleaned trial tables."""
 from __future__ import annotations
 
 import argparse
@@ -14,7 +14,8 @@ from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "website"))
-from wordviz.explore_data import BUCKETS, DATA_DIR, MODELS, bucket_name
+from wordviz.explore_data import BUCKETS, DATA_DIR, bucket_name
+from wordviz.models import MODEL_LABELS
 
 
 def sources() -> dict[str, Path]:
@@ -69,10 +70,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DATA_DIR,
                         help="Directory for one independently readable archive per model.")
-    parser.add_argument("--models", nargs="+", choices=MODELS, default=list(MODELS))
+    parser.add_argument("--models", nargs="+", choices=MODEL_LABELS)
     args = parser.parse_args()
     available = sources()
-    for model in args.models:
+    for model in args.models or [key for key in MODEL_LABELS if key in available]:
         build(available[model], args.output / f"{model}.zip")
 
 

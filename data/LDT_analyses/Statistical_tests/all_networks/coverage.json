@@ -1,0 +1,209 @@
+{
+  "models": [
+    "Gemma",
+    "Gpt5_mini",
+    "Haiku",
+    "Humans",
+    "Llama3",
+    "Mistral",
+    "gemma4_12b",
+    "gemma4_26b",
+    "gemma4_26b_uncensored_fp8",
+    "gemma4_e2b",
+    "gemma4_e4b",
+    "kona2_12b",
+    "llama3_1_8b",
+    "llama3_2_3b",
+    "nemotron35_lightning30b",
+    "nemotron3_nano30b_transformers",
+    "nemotron3_nano30b_vllm",
+    "nemotron3_nano4b",
+    "qwen2_5_7b",
+    "qwen38_27b_fp8",
+    "qwen38_27b_uncensored_fp8"
+  ],
+  "human_reference": "Humans",
+  "ldt": {
+    "Gemma": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "Gpt5_mini": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "Haiku": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "Humans": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "Llama3": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "Mistral": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "gemma4_12b": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "gemma4_26b": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "gemma4_26b_uncensored_fp8": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "gemma4_e2b": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "gemma4_e4b": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "kona2_12b": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "llama3_1_8b": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "llama3_2_3b": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "nemotron35_lightning30b": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "nemotron3_nano30b_transformers": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "nemotron3_nano30b_vllm": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "nemotron3_nano4b": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "qwen2_5_7b": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "qwen38_27b_fp8": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    },
+    "qwen38_27b_uncensored_fp8": {
+      "used": 50,
+      "total": 50,
+      "excluded": []
+    }
+  },
+  "gender_shared_across_cohort": {
+    "prime_pairs": [
+      [
+        "woman",
+        "man"
+      ],
+      [
+        "female",
+        "male"
+      ],
+      [
+        "mother",
+        "father"
+      ],
+      [
+        "girl",
+        "boy"
+      ],
+      [
+        "feminine",
+        "masculine"
+      ]
+    ],
+    "female_targets": [
+      "affectionate",
+      "cheerful",
+      "compassionate",
+      "considerate",
+      "cooperative",
+      "emotional",
+      "empathetic",
+      "gentle",
+      "honest",
+      "kind",
+      "loyal",
+      "modest",
+      "pleasant",
+      "polite",
+      "quiet",
+      "sensitive",
+      "submissive",
+      "supportive",
+      "sympathetic",
+      "tender",
+      "trusting",
+      "understanding",
+      "warm"
+    ],
+    "male_targets": [
+      "active",
+      "aggressive",
+      "ambitious",
+      "analytical",
+      "assertive",
+      "athletic",
+      "competitive",
+      "confident",
+      "courageous",
+      "decisive",
+      "determined",
+      "dominant",
+      "forceful",
+      "greedy",
+      "hostile",
+      "impulsive",
+      "independent",
+      "intellectual",
+      "leader",
+      "logical",
+      "outspoken",
+      "persistent",
+      "reckless",
+      "stubborn",
+      "superior"
+    ]
+  }
+}

@@ -39,6 +39,7 @@ def build_graph(path, valence, destination):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--models", nargs="+", help="Build only these graph keys.")
     args = parser.parse_args()
     with (ROOT / "lexicon/NRC-VAD-Lexicon-v2.1.txt").open(encoding="utf-8") as lexicon:
         valence = {
@@ -48,6 +49,8 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     for path in sorted((ROOT / "data/graphs/edge_lists").glob("FA_*_edgelist.csv")):
         model = path.name[len("FA_") : -len("_edgelist.csv")]
+        if args.models and model not in args.models:
+            continue
         build_graph(path, valence, args.output / f"{model}.json.gz")
 
 

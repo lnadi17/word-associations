@@ -1,9 +1,14 @@
 """Collection records for the datasets used by the explorer and analyses."""
 
+import json
+from pathlib import Path
+
 from dash import html
 
-from .model_provenance import MODEL_PROVENANCE
+from .model_provenance import MODEL_PROVENANCE, REPO
 from .models import GRAPH_MODELS, MATRIX_MODELS
+
+RELEASE = json.loads((Path(__file__).with_name("resources") / "network_release.json").read_text())
 
 
 def _record(key, record):
@@ -15,9 +20,15 @@ def _record(key, record):
     elif key in GRAPH_MODELS:
         usage = "Explore and Association paths"
     else:
-        usage = "Collected responses"
+        usage = record.get("availability", "Collected responses")
 
-    fields = [("Availability", record.get("availability") or usage)]
+    fields = [("Availability", usage)]
+    if key in RELEASE["networks"]:
+        url = f"{REPO}/releases/download/{RELEASE['tag']}/{key}.zip"
+        size_mb = RELEASE["networks"][key]["bytes"] / 1_000_000
+        fields.append(("Research data", html.A(
+            f"Cleaned trials, graph and activation matrices (ZIP, {size_mb:.1f} MB)", href=url,
+        )))
     if not human or record.get("revision"):
         fields.append(("Version or revision", record.get("revision") or "Unrecorded"))
     if record.get("collection"):
