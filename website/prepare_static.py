@@ -1,6 +1,10 @@
 """Prepare browser assets and verify the server-side research resources."""
 
 import argparse
+import hashlib
+import json
+import os
+import re
 from pathlib import Path
 import shutil
 
@@ -8,6 +12,7 @@ import plotly
 
 from wordviz.bias_norms import valence_result, emotion_result
 from wordviz.experiment_data import metadata
+from wordviz.explore_archives import BUNDLED, BUNDLE_DIR, DATA_DIR, MANIFEST
 from wordviz.explore_data import vocabulary
 from wordviz.models import GRAPH_MODELS, MATRIX_MODELS
 from wordviz.norm_lexicons import SERVER_PACK, NormSourceError, load_lexicons, prepare_pack
@@ -16,10 +21,30 @@ from wordviz.social_data import domain_info
 from wordviz.social_domains import DOMAIN_PRIMES
 
 
+def write_remote_archives():
+    release = Path(__file__).with_name("release-files.json")
+    commit = json.loads(release.read_text())["commit"] if release.is_file() else os.environ.get("VERCEL_GIT_COMMIT_SHA")
+    if not commit or not re.fullmatch(r"[a-f0-9]{40}", commit):
+        raise ValueError("Packaging remote Explore files requires the source Git commit.")
+    entries = {}
+    BUNDLE_DIR.mkdir(exist_ok=True)
+    for model in GRAPH_MODELS:
+        archive = DATA_DIR / f"{model}.zip"
+        if model in BUNDLED:
+            shutil.copyfile(archive, BUNDLE_DIR / archive.name)
+            continue
+        with archive.open("rb") as source:
+            digest = hashlib.file_digest(source, "sha256").hexdigest()
+        entries[model] = {"sha256": digest, "bytes": archive.stat().st_size}
+    MANIFEST.write_text(json.dumps({"commit": commit, "archives": entries}, separators=(",", ":")))
+    print(f"Prepared {len(entries)} commit-pinned Explore archives", flush=True)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--vad", type=Path, help="Official NRC VAD v1 ZIP for an offline build")
     parser.add_argument("--emolex", type=Path, help="Official NRC EmoLex v0.92 ZIP for an offline build")
+    parser.add_argument("--package-explore", action="store_true", help="Record verified archives for the Vercel function.")
     args = parser.parse_args()
     if bool(args.vad) != bool(args.emolex):
         parser.error("Supply both NRC archives for an offline build.")
@@ -48,3 +73,5 @@ if __name__ == "__main__":
     target = Path(__file__).parent / "public" / "vendor" / source.name
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, target)
+    if args.package_explore:
+        write_remote_archives()

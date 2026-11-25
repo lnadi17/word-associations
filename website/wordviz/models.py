@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import sqlite3
 
+from .explore_archives import local_archive, remote_archives
 from .model_provenance import MODEL_PROVENANCE
 
 RESOURCES = Path(__file__).resolve().parent / "resources"
@@ -17,7 +18,7 @@ MATRIX_KEYS = (*ARCHIVED_MATRICES, *(key for key in MODEL_LABELS if key not in _
 
 GRAPH_MODELS = {
     key: label for key, label in MODEL_LABELS.items()
-    if (RESOURCES / "explore" / f"{key}.zip").is_file()
+    if (local_archive(key) or key in remote_archives())
     and (RESOURCES / "paths" / f"{key}.json.gz").is_file()
 }
 

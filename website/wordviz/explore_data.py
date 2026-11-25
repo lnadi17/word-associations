@@ -3,15 +3,15 @@ from __future__ import annotations
 
 import gzip
 import json
+from http.client import HTTPException
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 from zlib import crc32
 
+from .explore_archives import DATA_DIR, archive_path
 from .models import GRAPH_MODELS as MODELS
 
-DATA_DIR = Path(__file__).resolve().parent / "resources/explore"
 BUCKETS = 64
 DIRECTIONS = ("forward", "backward", "merged")
 
@@ -27,10 +27,10 @@ class StoreUnavailable(Exception):
 @lru_cache(maxsize=24)
 def _read(model: str, filename: str):
     try:
-        with ZipFile(DATA_DIR / f"{model}.zip") as archive:
+        with ZipFile(archive_path(model)) as archive:
             contents = archive.read(filename)
         return json.loads(gzip.decompress(contents))
-    except (OSError, ValueError, EOFError, KeyError, BadZipFile) as error:
+    except (OSError, ValueError, EOFError, KeyError, BadZipFile, HTTPException) as error:
         raise StoreUnavailable(f"Association data for {MODELS[model]} could not be loaded.") from error
 
 

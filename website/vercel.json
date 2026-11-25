@@ -1,11 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "flask",
-  "buildCommand": "python restore_release.py && python prepare_static.py",
+  "buildCommand": "python restore_release.py && python prepare_static.py --package-explore",
   "functions": {
     "app.py": {
       "maxDuration": 60,
-      "includeFiles": "wordviz/resources/**"
+      "excludeFiles": "wordviz/resources/explore/*.zip"
     }
   }
 }

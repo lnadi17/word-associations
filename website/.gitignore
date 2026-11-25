@@ -1,3 +1,6 @@
 /.vercel/
 /.venv/
 /wordviz/resources/private/
+
+/wordviz/resources/explore/remote.json
+/wordviz/resources/bundled_explore/
