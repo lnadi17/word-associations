@@ -1,6 +1,6 @@
 # Word Associations
 
-A Python Dash application for exploring the project's cleaned trials, saved activation matrices, and filtered graphs. The three pages are available at `/`, `/lexical-decision`, and `/implicit-bias`.
+A Python Dash application for exploring the project's cleaned trials, saved activation matrices, and filtered graphs. The analysis pages are available at `/`, `/lexical-decision`, and `/implicit-bias`. Open `/models` for collection identifiers, version evidence and dataset sources.
 
 ## Run locally
 
@@ -24,7 +24,7 @@ Word valence uses all words in the graph with an NRC valence rating. Emotion wor
 
 Use **website** as the Vercel project’s Root Directory for a Git deployment, or submit the contents of this directory as the deployment root. The Flask entry point is `app.py:app`. The build installs the web dependencies and runs `python prepare_static.py` to verify the research stores and refresh the pinned Plotly browser bundle in `public/vendor/`. Include the static assets and `wordviz/resources/` in the deployment source. Vercel serves the JavaScript and stylesheet from its CDN, while the function reads the research data. The application requires no credentials, external database, or model API.
 
-To verify a preview, open the three page URLs directly. In Explore, compare *cat* for Humans and GPT-5 mini, switch connections, then change views. In Lexical decision, the GPT-5 mini Table 6 row should show 0.866 for the priming effect and −0.667 for activation versus RT. In Implicit bias, switch from the editable priming experiment to Association paths. [Vercel Flask deployment reference](https://vercel.com/docs/frameworks/backend/flask)
+To verify a preview, open each page URL directly. In Explore, compare *cat* for Humans and GPT-5 mini, switch connections, then change views. In Lexical decision, the GPT-5 mini Table 6 row should show 0.866 for the priming effect and −0.667 for activation versus RT. In Implicit bias, switch from the editable priming experiment to Association paths. In Model details, expand an analyzed dataset and an additional collection to inspect their sources. [Vercel Flask deployment reference](https://vercel.com/docs/frameworks/backend/flask)
 
 ## Data and refresh procedure
 

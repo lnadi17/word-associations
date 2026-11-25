@@ -11,7 +11,7 @@ import numpy  # noqa: F401
 from dash import Dash, Input, Output, State, dcc, html, no_update
 from flask import Flask, Response, request
 
-from wordviz import custom_domains, experiments, explore, norm_views, paths
+from wordviz import custom_domains, experiments, explore, model_details, norm_views, paths
 from wordviz.social_domains import DOMAIN_LABELS, key_for
 
 
@@ -83,6 +83,11 @@ PAGES = {
         "Implicit associations",
         "Compare how social identity primes activate words in human and language-model networks.",
     ),
+    "/models": (
+        "Model details",
+        "Model and collection details",
+        "Open a dataset to see its recorded version, collection details and sources.",
+    ),
 }
 
 
@@ -91,6 +96,8 @@ def page_content(path):
         return explore.layout()
     if path == "/lexical-decision":
         return experiments.ldt_layout()
+    if path == "/models":
+        return model_details.layout()
     return html.Div([
         html.Fieldset([
             html.Legend("Analysis method", className="visually-hidden"),

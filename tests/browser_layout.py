@@ -152,6 +152,26 @@ def check_page(page, url):
     check_custom_domain(page, methods)
     check_primes_only_domain(page, methods)
     check_research_template(page, methods, research_title)
+    check_model_details(page)
+
+
+def check_model_details(page):
+    page.get_by_role("link", name="Model details", exact=True).click()
+    expect(page.get_by_role("heading", name="Model and collection details")).to_be_visible()
+    served = page.locator("#model-gpt5_mini")
+    expect(served.locator("summary")).to_contain_text("gpt-5-mini-2025-08-07")
+    served.locator("summary").press("Enter")
+    expect(served.locator("dt", has_text="Version or revision")).to_be_visible()
+    expect(served.locator("dd a").first).to_have_attribute("href", re.compile("^https://"))
+    pending = page.locator(".model-catalog section").filter(
+        has=page.get_by_role("heading", name="Additional collections")
+    ).locator("#model-gemma4_26b_uncensored_fp8")
+    identifier = pending.locator("summary code")
+    expect(identifier).to_have_text("orcarouter/Gemma-4-26B-A4B-it-Uncensored-FP8")
+    pending.locator("summary").click()
+    expect(pending.locator("dd a").first).to_be_visible()
+    assert identifier.evaluate("el => el.getBoundingClientRect().right <= innerWidth")
+    check_width(page)
 
 
 def check_custom_domain(page, methods):

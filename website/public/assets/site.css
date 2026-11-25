@@ -28,7 +28,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .brand-symbol i { position: absolute; border: 1.5px solid var(--teal); border-radius: 50%; background: #edf3ed; width: 15px; height: 15px; left: 0; bottom: 0; }
 .brand-symbol i:nth-child(2) { left: 13px; bottom: 0; background: #c8ded4; }
 .brand-symbol i:nth-child(3) { left: 7px; bottom: 11px; background: #4b8c78; }
-.masthead nav { display: flex; align-items: center; gap: 8px; }
+.masthead nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .nav-link { color: var(--muted); text-decoration: none; padding: 7px 14px; border-radius: 6px; font-size: 14px; font-weight: 550; white-space: nowrap; }
 .nav-link:hover, .nav-link.active { background: var(--mint); color: var(--teal-dark); }
 .page-heading { padding: clamp(28px, 3.4vw, 48px) 0 25px; }
@@ -73,6 +73,29 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
 .workspace .js-plotly-plot .modebar-btn:hover { background: transparent; }
 .workspace details { margin: 14px 0; }
 .workspace summary { cursor: pointer; font-weight: 600; }
+.model-catalog section + section { margin-top: 32px; }
+.model-catalog h2 { margin-bottom: 12px; }
+.model-list { background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.workspace .model-record { margin: 0; overflow-wrap: anywhere; }
+.model-record + .model-record { border-top: 1px solid var(--soft-line); }
+.model-record > summary {
+  display: grid; grid-template-columns: minmax(130px, 1fr) minmax(0, 2fr) auto;
+  align-items: center; gap: 12px; padding: 14px clamp(14px, 2vw, 26px); list-style: none;
+}
+.model-record > summary::-webkit-details-marker { display: none; }
+.model-record > summary::after {
+  content: ""; width: 7px; height: 7px; border-right: 2px solid var(--teal);
+  border-bottom: 2px solid var(--teal); transform: rotate(45deg);
+}
+.model-record[open] > summary::after { transform: rotate(225deg); }
+.model-record > summary:focus-visible { outline: 2px solid var(--teal); outline-offset: -3px; }
+.model-field-label, .model-fields dt { color: var(--muted); font-size: 12px; font-weight: 600; }
+.model-field-label { display: block; }
+.model-identifier code { font: 14px/1.45 ui-monospace, monospace; }
+.model-fields { margin: 0; padding: 2px clamp(14px, 2vw, 26px) 18px; }
+.model-fields > div { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(0, 2fr); gap: 12px; padding: 5px 0; }
+.model-fields dd { margin: 0; max-width: 85ch; }
+.model-sources { display: flex; flex-wrap: wrap; gap: 4px 18px; list-style: none; margin: 0; padding: 0; }
 .muted, .note, .hint { color: var(--muted); font-size: 13px; }
 .source-note { font-size: 13px; color: var(--muted); }
 .table-scroll { width: 100%; overflow: auto; }
@@ -149,4 +172,8 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
   .masthead .nav-link:first-child { margin-left: -8px; }
   .explorer-layout .segmented label { padding: 7px 6px; font-size: 12px; }
   .overlap-counts > div { padding: 8px; }
+  .model-record > summary { grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; }
+  .model-record > summary::after { grid-column: 2; grid-row: 1; }
+  .model-identifier { grid-column: 1 / -1; }
+  .model-fields > div { grid-template-columns: 1fr; gap: 1px; }
 }
