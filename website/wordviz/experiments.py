@@ -18,6 +18,7 @@ from .social_data import domain_info, domain_suggest, domain_values
 from .social_domains import DOMAIN_PRIMES, key_for, label_for, primes_for, resolve_domain
 from .paired_presets import paired_presets
 from .target_presets import TARGET_PRESETS
+from .model_options import model_options
 
 ACCENT = "#17735f"
 SECONDARY = "#bf6b36"
@@ -37,7 +38,7 @@ def field(label, control, persistence=True):
 
 
 def model_fields(prefix):
-    options = [{"value": m, "label": label} for m, label in MODELS.items()]
+    options = model_options(MODELS)
     return [
         field("Network", dcc.Dropdown(id=prefix + "-a", options=options, optionHeight=56, value="Humans", clearable=False)),
         field("Compare with", dcc.Dropdown(id=prefix + "-b", options=options, optionHeight=56, placeholder="Choose another network")),

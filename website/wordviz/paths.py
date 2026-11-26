@@ -4,12 +4,12 @@ from dash import Input, Output, State, dcc, html, set_props
 import plotly.graph_objects as go
 
 from .path_data import MODEL_NAMES, load_graph, stream
+from .model_options import model_options
 from .social_domains import key_for, primes_for, resolve_domain
 
 
 DEFAULT_PRIMES = ["feminine", "masculine"]
 DEFAULT_TARGETS = ["compassionate", "forceful"]
-MODEL_OPTIONS = [{"label": name, "value": key} for key, name in MODEL_NAMES.items()]
 VALENCE_COLORS = [[0, "#ad3f46"], [0.5, "#ecebe4"], [1, "#3266a4"]]
 
 
@@ -20,6 +20,7 @@ def _field(label, component, persistence=True):
 
 
 def layout(domain="gender", primary_model="humans", comparison_model=None):
+    options = model_options(MODEL_NAMES)
     starts = DEFAULT_PRIMES if domain == "gender" else primes_for(domain)
     ends = DEFAULT_TARGETS if domain == "gender" else ["community"]
     extra_fields = []
@@ -56,9 +57,9 @@ def layout(domain="gender", primary_model="humans", comparison_model=None):
                + note),
         html.Div([
             _field("Path model", dcc.Dropdown(
-                id="path-a", options=MODEL_OPTIONS, optionHeight=56, value=primary_model, clearable=False)),
+                id="path-a", options=options, optionHeight=56, value=primary_model, clearable=False)),
             _field("Compare path model", dcc.Dropdown(
-                id="path-b", options=MODEL_OPTIONS, optionHeight=56, value=comparison_model, placeholder="Single graph")),
+                id="path-b", options=options, optionHeight=56, value=comparison_model, placeholder="Single graph")),
             *extra_fields,
             _field("Starting words", dcc.Dropdown(
                 id="path-start", value=list(starts),

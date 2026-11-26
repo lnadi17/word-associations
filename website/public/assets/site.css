@@ -75,6 +75,7 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
 .workspace summary { cursor: pointer; font-weight: 600; }
 .model-catalog section + section { margin-top: 32px; }
 .model-catalog h2 { margin-bottom: 12px; }
+.model-pin { color: var(--teal); margin-inline-end: .4em; }
 .model-list { background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
 .workspace .model-record { margin: 0; overflow-wrap: anywhere; }
 .model-record + .model-record { border-top: 1px solid var(--soft-line); }

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from dash import html
 
+from .model_options import ORIGINS, pinned_models
 from .model_provenance import MODEL_PROVENANCE, REPO
 from .models import GRAPH_MODELS, MATRIX_MODELS
 
@@ -23,6 +24,9 @@ def _record(key, record):
         usage = record.get("availability", "Collected responses")
 
     fields = [("Availability", usage)]
+    rho = pinned_models().get(key)
+    if rho is not None:
+        fields.append(("Pinned model", f"{ORIGINS[key]} · Table 6 Spearman ρ = {rho:.3f}"))
     if key in RELEASE["networks"]:
         url = f"{REPO}/releases/download/{RELEASE['tag']}/{key}.zip"
         size_mb = RELEASE["networks"][key]["bytes"] / 1_000_000
@@ -55,12 +59,28 @@ def _record(key, record):
 
 
 def layout():
+    pins = pinned_models()
     available, additional = [], []
     for key, record in MODEL_PROVENANCE.items():
+        if key in pins:
+            continue
         group = available if key in GRAPH_MODELS else additional
         group.append(_record(key, record))
-    return html.Div([
+    sections = []
+    if pins:
+        sections.append(html.Section([
+            html.H2("Pinned models"),
+            html.P([
+                "Stars mark one release per original developer. Among documented developer APIs and original "
+                "checkpoints with complete lexical-decision data, these models have the strongest negative "
+                "correlations between activation and human reaction time across the 50 triplets. ",
+                html.A("View Table 6", href="/lexical-decision"),
+            ], className="source-note"),
+            html.Div([_record(key, MODEL_PROVENANCE[key]) for key in pins], className="model-list"),
+        ]))
+    sections.extend(
         html.Section([html.H2(heading), html.Div(records, className="model-list")])
         for heading, records in (("Analysis datasets", available), ("Additional collections", additional))
         if records
-    ], className="model-catalog")
+    )
+    return html.Div(sections, className="model-catalog")

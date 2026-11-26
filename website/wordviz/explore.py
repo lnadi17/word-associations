@@ -9,9 +9,9 @@ import plotly.graph_objects as go
 from dash import ALL, Input, Output, State, ctx, dcc, html, no_update
 
 from .explore_data import DIRECTIONS, MODELS, StoreUnavailable, neighbors, vocabulary
+from .model_options import model_options
 
 COLORS = ("#167264", "#ad632c", "#5669a0", "#984f66", "#547733", "#91689d", "#8d7129", "#347d99")
-MODEL_OPTIONS = [{"label": label, "value": key} for key, label in MODELS.items()]
 NOTES = {
     "forward": "Shares use all nonblank responses to the selected cue.",
     "backward": "Shares use all occurrences of the selected word as a response.",
@@ -25,14 +25,15 @@ def _field(label, component):
 
 
 def layout():
+    options = model_options(MODELS)
     return html.Div([
         html.Section([
             html.Div([
                 _field("Words (up to 4)", dcc.Dropdown(id="ex-words", options=["cat"], value=["cat"],
                                                        multi=True, placeholder="Search and add words")),
-                _field("Model", dcc.Dropdown(id="ex-model-a", options=MODEL_OPTIONS, optionHeight=56, value="humans",
+                _field("Model", dcc.Dropdown(id="ex-model-a", options=options, optionHeight=56, value="humans",
                                              clearable=False)),
-                _field("Compare model", dcc.Dropdown(id="ex-model-b", options=MODEL_OPTIONS, optionHeight=56,
+                _field("Compare model", dcc.Dropdown(id="ex-model-b", options=options, optionHeight=56,
                                                      placeholder="Add a model")),
             ], className="controls explorer-primary"),
             html.Div([
