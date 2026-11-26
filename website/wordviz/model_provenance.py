@@ -121,11 +121,11 @@ MODEL_PROVENANCE = {
         "The raw filename and processing configuration identify the Llama 3.2 family and 3B size."),
     "qwen2_5_7b": lag_collection("Qwen2.5 7B", "Qwen2.5-7B", "Qwen2.5-7B",
         "The raw filename and processing configuration identify the Qwen 2.5 family and 7B size."),
-    "gemma4_26b_uncensored_fp8": vllm_run("Gemma 4 26B-A4B IT · OrcaRouter FP8",
+    "gemma4_26b_uncensored_fp8": vllm_run("Gemma 4 26B-A4B IT · Uncensored · OrcaRouter FP8",
         "orcarouter/Gemma-4-26B-A4B-it-Uncensored-FP8", "20261113_175503", 15,
         "1,221,600 rows covering 12,216 cues at 100 samples each. All response fields contain text. "
         "501 generations ended at the length limit."),
-    "qwen38_27b_uncensored_fp8": vllm_run("Qwen 3.8 27B · OrcaRouter FP8",
+    "qwen38_27b_uncensored_fp8": vllm_run("Qwen 3.8 27B · Uncensored · OrcaRouter FP8",
         "orcarouter/Qwen3.8-27B-Uncensored-FP8", "20261113_190158", 20,
         "1,221,600 rows covering 12,216 cues at 100 samples each. 2,416 response fields are blank "
         "after trimming whitespace. Two generations ended at the length limit."),

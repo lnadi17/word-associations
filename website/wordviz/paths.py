@@ -4,7 +4,7 @@ from dash import Input, Output, State, dcc, html, set_props
 import plotly.graph_objects as go
 
 from .path_data import MODEL_NAMES, load_graph, stream
-from .model_options import model_options
+from .model_options import model_dropdown, model_options
 from .models import ordered_model_keys
 from .social_domains import key_for, primes_for, resolve_domain
 
@@ -57,10 +57,8 @@ def layout(domain="gender", primary_model="humans", comparison_model=None):
                "Color shows human-rated valence from NRC VAD v2.1."
                + note),
         html.Div([
-            _field("Path model", dcc.Dropdown(
-                id="path-a", options=options, optionHeight=56, value=primary_model, clearable=False)),
-            _field("Compare path model", dcc.Dropdown(
-                id="path-b", options=options, optionHeight=56, value=comparison_model, placeholder="Single graph")),
+            _field("Path model", model_dropdown("path-a", options, value=primary_model, clearable=False)),
+            _field("Compare path model", model_dropdown("path-b", options, value=comparison_model, placeholder="Single graph")),
             *extra_fields,
             _field("Starting words", dcc.Dropdown(
                 id="path-start", value=list(starts),

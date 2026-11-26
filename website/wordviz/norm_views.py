@@ -209,8 +209,8 @@ def norm_chart(results, categories, category_key, category_title, value_key, val
     for index, (model, name) in enumerate(zip(results, model_names)):
         highlight, color, symbol = highlights.get(model, ("", "", ""))
         marker = html.Span(symbol, className="norm-highlight-symbol", **{"aria-hidden": "true"}) if symbol else None
-        # Keep snapshot dates together when names wrap in the pinned column.
-        title, separator, variant = name.partition(" · ")
+        # Wrap the model and edition freely, keeping the final build or date together.
+        title, separator, variant = name.rpartition(" · ")
         label = html.Span([title, separator, html.Span(variant, className="norm-model-variant")]) if separator else name
         row_headers.append(html.Div([marker, label], className="norm-matrix-row",
                                     **{"data-highlight": highlight}))

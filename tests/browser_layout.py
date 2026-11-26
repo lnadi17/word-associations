@@ -424,17 +424,22 @@ def check_page(page, url):
     check_primes_only_domain(page, methods)
     check_research_template(page, methods, research_title)
     check_model_details(page)
-    if "gemma4_26b_uncensored_fp8" in MATRIX_MODELS:
+    if {"gemma4_26b_uncensored_fp8", "qwen38_27b_uncensored_fp8"} <= MATRIX_MODELS.keys():
         check_variant_network(page)
 
 
 def check_variant_network(page):
     key = "gemma4_26b_uncensored_fp8"
     variant = GRAPH_MODELS[key]
+    comparison = GRAPH_MODELS["qwen38_27b_uncensored_fp8"]
     page.get_by_role("link", name="Explore", exact=True).click()
     search_model(page, "ex-model-a", variant)
-    expect(page.locator(".series-legend")).to_contain_text(variant)
+    search_model(page, "ex-model-b", comparison)
+    for label in (variant, comparison):
+        expect(page.locator(".series-legend")).to_contain_text(label)
     page.get_by_text("2D graph", exact=True).click()
+    for label in (variant, comparison):
+        expect(page.locator(".explorer-network h3").filter(has_text=label)).to_have_count(1)
     check_chart(page.locator(".explorer-network .dash-graph").first, ".scatterlayer .point", 295)
     page.get_by_role("link", name="Lexical decision").click()
     search_model(page, "ldt-a", variant)
@@ -459,9 +464,22 @@ def check_variant_network(page):
         }""")
     page.get_by_role("link", name="Implicit bias").click()
     search_model(page, "social-a", variant)
+    search_model(page, "social-b", comparison)
     page.locator("#bias-view").get_by_text("Heatmaps", exact=True).click()
     expect(page.locator("#heat-results h3").first).to_have_text(variant)
     check_chart(page.locator("#heat-results .dash-graph").first, ".heatmaplayer image", 320)
+    page.locator("#bias-view").get_by_text("Word valence", exact=True).click()
+    for label in (variant, comparison):
+        row = page.locator("#valence-results .norm-matrix-row").filter(has_text=label)
+        expect(row).to_be_visible()
+        # The pinned model name must fit in the same row as its activation values.
+        assert row.evaluate("""el => {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const text = range.getBoundingClientRect(), cell = el.getBoundingClientRect();
+            return text.top >= cell.top - 1 && text.bottom <= cell.bottom + 1 &&
+                text.left >= cell.left - 1 && text.right <= cell.right + 1;
+        }"""), label
     check_width(page)
 
 

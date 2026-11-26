@@ -38,7 +38,7 @@ class ModelProvenanceTests(unittest.TestCase):
     def test_display_order_handles_versions_sizes_builds_and_old_selection_keys(self):
         labels = ["Llama3.2 3B", "Llama 3.10 3B", "Nemotron 3 Nano 4B · BF16",
                   "Nemotron 3 Nano 30B · BF16", "Nemotron 3.5 Lightning 30B",
-                  "Qwen2.5 7B", "Qwen 3.8 27B · FP8", "Qwen 3.8 27B · OrcaRouter FP8"]
+                  "Qwen2.5 7B", "Qwen 3.8 27B · FP8", "Qwen 3.8 27B · Uncensored · OrcaRouter FP8"]
         self.assertEqual(sorted(reversed(labels), key=model_sort_key), labels)
         for models in (MATRIX_MODELS, GRAPH_MODELS):
             self.assertEqual(list(models.values()), sorted(models.values(), key=model_sort_key))
@@ -64,12 +64,16 @@ class ModelProvenanceTests(unittest.TestCase):
             config = (ROOT / "configs" / f"lwow_{key}.yaml").read_text()
             self.assertIn(f'model: "{MODEL_PROVENANCE[key]["identifier"]}"', config)
 
-    def test_archived_versions_are_visible_and_searchable_under_the_original_keys(self):
+    def test_versions_are_visible_and_searchable_under_the_original_keys(self):
         cases = [
             ("Gpt5_mini", "GPT-5 mini · 2025-08-07", ["gpt-5-mini-2025-08-07"]),
             ("Haiku", "Claude 3.5 Haiku · 2024-10-22", ["claude-3-5-haiku-latest", "claude-3-5-haiku-20241022"]),
             ("Mistral", "Mistral 7B Instruct v0.1 · Q4_K_M", ["mistral-7b-instruct-v0.1.Q4_K_M.gguf"]),
             ("Gemma", "Gemma · checkpoint unrecorded", []),
+            ("gemma4_26b_uncensored_fp8", "Gemma 4 26B-A4B IT · Uncensored · OrcaRouter FP8",
+             ["orcarouter/Gemma-4-26B-A4B-it-Uncensored-FP8"]),
+            ("qwen38_27b_uncensored_fp8", "Qwen 3.8 27B · Uncensored · OrcaRouter FP8",
+             ["orcarouter/Qwen3.8-27B-Uncensored-FP8"]),
         ]
         for catalog in (GRAPH_MODELS, MATRIX_MODELS):
             options = model_options(catalog)

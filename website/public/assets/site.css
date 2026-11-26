@@ -58,6 +58,15 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
 .workspace .VirtualizedSelectOption { line-height: 1.2; overflow-wrap: anywhere; }
 .workspace .Select:focus-within > .Select-control { border-color: var(--teal); box-shadow: 0 0 0 2px var(--teal); }
 .Select .Select-input > input:focus-visible { outline: none; }
+.model-dropdown .Select-control { display: flex; align-items: center; }
+.model-dropdown .Select-multi-value-wrapper { display: grid; flex: 1; min-width: 0; }
+.model-dropdown .Select-control .Select-value, .model-dropdown .Select-input {
+  grid-area: 1 / 1; align-self: center; min-width: 0;
+}
+.model-dropdown .Select-control .Select-value {
+  position: static; white-space: normal; line-height: 1.25; padding-block: 7px; overflow-wrap: anywhere;
+}
+.model-dropdown .Select-input { position: relative; }
 @media (forced-colors: active) {
   .workspace .Select:focus-within > .Select-control { outline: 2px solid Highlight; }
 }
@@ -232,6 +241,7 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
   .panel .explorer-modes { padding-top: 0; }
 }
 @media (max-width: 460px) {
+  .controls .field:has(.model-dropdown) { flex-basis: 100%; }
   .masthead-inner { flex-direction: column; align-items: start; }
   .masthead .nav-link:first-child { margin-left: -8px; }
   .explorer-layout .segmented label { padding: 7px 6px; font-size: 12px; }

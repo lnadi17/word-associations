@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from dash import html
+from dash import dcc, html
 
 from .experiment_data import ldt_stats, metadata
 from .model_provenance import MODEL_PROVENANCE
@@ -45,6 +45,10 @@ def pinned_label(name):
         html.Span("★", className="model-pin", **{"aria-hidden": "true"}),
         html.Span(name, className="model-name"), html.Span(" (pinned)", className="visually-hidden"),
     ])
+
+
+def model_dropdown(control_id, options, **props):
+    return dcc.Dropdown(id=control_id, options=options, optionHeight=56, className="model-dropdown", **props)
 
 
 def model_options(models):

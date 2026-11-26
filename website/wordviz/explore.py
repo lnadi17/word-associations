@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 from dash import ALL, Input, Output, State, ctx, dcc, html, no_update
 
 from .explore_data import DIRECTIONS, MODELS, StoreUnavailable, neighbors, vocabulary
-from .model_options import model_options
+from .model_options import model_dropdown, model_options
 from .models import model_sort_key
 
 COLORS = ("#167264", "#ad632c", "#5669a0", "#984f66", "#547733", "#91689d", "#8d7129", "#347d99")
@@ -32,10 +32,8 @@ def layout():
             html.Div([
                 _field("Words (up to 4)", dcc.Dropdown(id="ex-words", options=["cat"], value=["cat"],
                                                        multi=True, placeholder="Search and add words")),
-                _field("Model", dcc.Dropdown(id="ex-model-a", options=options, optionHeight=56, value="humans",
-                                             clearable=False)),
-                _field("Compare model", dcc.Dropdown(id="ex-model-b", options=options, optionHeight=56,
-                                                     placeholder="Add a model")),
+                _field("Model", model_dropdown("ex-model-a", options, value="humans", clearable=False)),
+                _field("Compare model", model_dropdown("ex-model-b", options, placeholder="Add a model")),
             ], className="controls explorer-primary"),
             html.Div([
                 _field("Connections", dcc.RadioItems(id="ex-direction",

@@ -18,7 +18,7 @@ from .social_data import domain_info, domain_suggest, domain_values
 from .social_domains import DOMAIN_PRIMES, key_for, label_for, primes_for, resolve_domain
 from .paired_presets import paired_presets
 from .target_presets import TARGET_PRESETS
-from .model_options import model_options
+from .model_options import model_dropdown, model_options
 from .model_inclusion import included_models
 from .models import model_sort_key, ordered_model_keys
 
@@ -42,8 +42,8 @@ def field(label, control, persistence=True):
 def model_fields(prefix):
     options = model_options(MODELS)
     return [
-        field("Network", dcc.Dropdown(id=prefix + "-a", options=options, optionHeight=56, value="Humans", clearable=False)),
-        field("Compare with", dcc.Dropdown(id=prefix + "-b", options=options, optionHeight=56, placeholder="Choose another network")),
+        field("Network", model_dropdown(prefix + "-a", options, value="Humans", clearable=False)),
+        field("Compare with", model_dropdown(prefix + "-b", options, placeholder="Choose another network")),
     ]
 
 
