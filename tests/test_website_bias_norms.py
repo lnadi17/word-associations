@@ -3,16 +3,67 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from dash import dcc, html
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "website"))
 
 from wordviz.bias_norms import EMOTIONS, emotion_result, valence_result
 from wordviz.models import MATRIX_MODELS
+from wordviz.norm_views import ACCENT, CONTEXT, SECONDARY, emotion_view, valence_view
 from wordviz.social_domains import DOMAIN_PRIMES
 
 
 class BiasNormsTests(unittest.TestCase):
+    def test_all_networks_plotted_and_highlights_preserve_estimates(self):
+        def by_name(view):
+            graph = next(child for child in view._traverse() if isinstance(child, dcc.Graph))
+            self.assertIs(graph.figure.layout.dragmode, False)
+            return {trace.name: trace for trace in graph.figure.data}
+
+        renderers = [lambda a, b: valence_view("religion", a, b),
+                     lambda a, b: emotion_view("politics", a, b, "democrat", "republican")]
+        for render in renderers:
+            original = by_name(render("Humans", "Gpt5_mini"))
+            changed = by_name(render("Gemma", "Humans"))
+            self.assertEqual(set(original), set(MATRIX_MODELS.values()))
+            for name, trace in original.items():
+                self.assertEqual((trace.x, trace.y), (changed[name].x, changed[name].y))
+            self.assertEqual(original["Humans"].marker.color, ACCENT)
+            self.assertEqual(original["GPT-5 mini"].marker.symbol, "diamond")
+            self.assertEqual(changed["Humans"].marker.color, SECONDARY)
+            self.assertEqual(changed["GPT-5 mini"].marker.color, CONTEXT)
+
+    def test_inclusion_controls_figure_tables_and_empty_state(self):
+        only = ["Gpt5_mini"]
+        views = [valence_view("religion", "Humans", "Gpt5_mini", only),
+                 emotion_view("politics", "Humans", "Gpt5_mini", "democrat", "republican", only)]
+        for view in views:
+            graph = next(c for c in view._traverse() if isinstance(c, dcc.Graph))
+            self.assertEqual([trace.name for trace in graph.figure.data], ["GPT-5 mini"])
+            self.assertEqual(graph.figure.data[0].marker.color, SECONDARY)
+            bodies = [c for c in view._traverse() if isinstance(c, html.Tbody)]
+            self.assertTrue(all(row.className == "selected-row" for tb in bodies for row in tb.children))
+        with patch("wordviz.norm_views.valence_result") as compute:
+            empty = valence_view("gender", "Humans", "Gemma", [])
+            self.assertEqual(empty.role, "status")
+            compute.assert_not_called()
+
+    def test_unavailable_networks_keep_coverage_and_never_plot_zero(self):
+        def result(domain, model, left, right):
+            if model == "Gemma":
+                return {"available_primes": [left], "rows": [], "reason": "Prime missing"}
+            return {"available_primes": [left, right], "rows": [
+                {"emotion": "anger", "effect": 0., "n": 7, "nonzero": 3, "p": 1.}]}
+        with patch("wordviz.norm_views.emotion_result", side_effect=result):
+            panel = emotion_view("politics", "Gemma", "Gemma", "democrat", "republican", ["Gemma", "Humans"])
+        graph = next(c for c in panel._traverse() if isinstance(c, dcc.Graph))
+        self.assertEqual([(t.name, t.y, t.marker.color) for t in graph.figure.data], [("Humans", (0.,), CONTEXT)])
+        notes = [c.children for c in panel._traverse() if isinstance(c, html.Li) and isinstance(c.children, str)]
+        self.assertTrue(any("Gemma" in note and "republican" in note for note in notes))
+
     def test_all_domain_models_have_valence_and_emotion_coverage(self):
         for domain, primes in DOMAIN_PRIMES.items():
             for model in MATRIX_MODELS:

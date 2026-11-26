@@ -141,6 +141,30 @@ class ArchivedExperiments(unittest.TestCase):
             result = render_effect(domain, "Humans", None, words, [], None, None, None)
             self.assertIn("Choose two different primes", result.children)
 
+    def test_priming_inclusion_is_independent_of_highlights(self):
+        from dash import dcc, html
+        from wordviz.experiments import ACCENT, SECONDARY, render_effect
+
+        cohort = ["Humans", "Gpt5_mini", "Gemma"]
+        single = render_effect("religion", "Haiku", "Gpt5_mini", ["church", "holy", "cross"], None,
+                               None, "christian", "muslim", included=cohort)
+        trace = next(c.figure.data[0] for c in single._traverse() if isinstance(c, dcc.Graph))
+        self.assertEqual(list(trace.y), [MODELS[m] for m in cohort])
+        self.assertEqual(trace.marker.color[1], SECONDARY)
+        self.assertNotIn(ACCENT, trace.marker.color)
+        rows = next(c.children for c in single._traverse() if isinstance(c, html.Tbody))
+        self.assertEqual([r.className for r in rows], ["", "selected-row", ""])
+
+        for highlights in [("Humans", "Humans"), (None, None)]:
+            gender = render_effect("gender", *highlights, ["kind"], ["strong"], "woman/man", None, None,
+                                   included=["Gemma"])
+            for chart in (c for c in gender._traverse() if isinstance(c, dcc.Graph)):
+                self.assertEqual(list(chart.figure.data[0].y), [MODELS["Gemma"]])
+            self.assertEqual(len(next(c.children for c in gender._traverse() if isinstance(c, html.Tbody))), 2)
+        empty = render_effect("gender", "Humans", None, ["kind"], ["strong"], "woman/man", None, None, included=[])
+        self.assertEqual(empty.role, "status")
+        self.assertIn("at least one network", empty.children)
+
     def test_published_target_lists_work_in_each_network(self):
         from wordviz.social_data import domain_values
         from wordviz.social_domains import DOMAIN_PRIMES

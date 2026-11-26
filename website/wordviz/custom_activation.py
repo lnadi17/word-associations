@@ -25,20 +25,29 @@ class _Network:
     info: dict
 
 
-@lru_cache(maxsize=2)
-def _network(model):
+@lru_cache(maxsize=len(MATRIX_MODELS))
+def _coverage(model):
+    """Keep provenance and node membership available after the transition matrix is evicted."""
     if model not in MATRIX_MODELS:
         raise ValueError("Unknown activation network")
     key = model.lower()
     with gzip.open(WEIGHTS_DIR / f"{key}.gz", "rb") as stream:
         info = json.loads(stream.readline())
-        weights = np.frombuffer(stream.read(), dtype=info["dtype"]).astype(np.float64)
     snapshot = GRAPH_DIR / f"{key}.json.gz"
     if hashlib.sha256(snapshot.read_bytes()).hexdigest() != info["topology_sha256"]:
         raise ValueError(f"Graph topology and activation weights have different versions for {model}")
     graph = load_graph(key)
-    words = tuple(graph["words"])
-    neighbors = graph["neighbors"]
+    return info, tuple(graph["words"]), graph["index"]
+
+
+@lru_cache(maxsize=2)
+def _network(model):
+    info, words, index = _coverage(model)
+    key = model.lower()
+    with gzip.open(WEIGHTS_DIR / f"{key}.gz", "rb") as stream:
+        stream.readline()
+        weights = np.frombuffer(stream.read(), dtype=info["dtype"]).astype(np.float64)
+    neighbors = load_graph(key)["neighbors"]
     counts = np.fromiter(map(len, neighbors), dtype=np.int32, count=len(words))
     offsets = np.empty(len(words) + 1, dtype=np.int32)
     offsets[0] = 0
@@ -51,7 +60,7 @@ def _network(model):
     # to the weights of its outgoing edges on this undirected graph.
     weights *= 0.5 / strengths[sources]
     incoming = csr_matrix((weights, sources, offsets), shape=(len(words), len(words)))
-    return _Network(words, graph["index"], incoming, info)
+    return _Network(words, index, incoming, info)
 
 
 def _checked_primes(primes):
@@ -85,12 +94,12 @@ def raw_columns(model, primes):
 
 def custom_info(primes, model):
     requested = _checked_primes(primes)
-    network = _network(model)
+    info, words, index = _coverage(model)
     return {
-        "source": network.info["source"], "sha256": network.info["sha256"],
-        "steps": network.info["steps"], "nodes": len(network.words),
-        "primes": [p for p in requested if p in network.index],
-        "missing_primes": [p for p in requested if p not in network.index],
+        "source": info["source"], "sha256": info["sha256"],
+        "steps": info["steps"], "nodes": len(words),
+        "primes": [p for p in requested if p in index],
+        "missing_primes": [p for p in requested if p not in index],
     }
 
 

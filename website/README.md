@@ -20,6 +20,8 @@ On **Implicit bias**, open **Social domain → Add a custom domain…**. Choose 
 
 Word valence uses all words in the graph with an NRC valence rating. Emotion word sets uses the eight NRC emotion categories. Both work with primes alone. For a custom domain, Priming effects and Heatmaps offer research sets when both exact prime words match a study. Otherwise, enter targets for each prime or assign saved lists. Association paths accepts individual target words or a saved list.
 
+Priming effects, Word valence and Emotion word sets initially include all available networks. Open **Networks shown** to select whole families or individual builds. Those choices carry across the three views and are saved in this browser. **Highlight network** and **Second highlight** emphasize included networks in the plots and tables. Priming effects recomputes common target coverage for the included eligible networks. Each network’s valence and emotion estimates use its own covered vocabulary, so including another network leaves those estimates unchanged.
+
 ## Vercel deployment
 
 Source-file deployments can supply a generated `release-files.json` with a public Git commit and SHA-256 hashes for research resources. The build restores those resources before Python imports the model registry. A full repository checkout already includes the website resources.

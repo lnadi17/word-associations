@@ -99,6 +99,28 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
 .model-sources { display: flex; flex-wrap: wrap; gap: 4px 18px; list-style: none; margin: 0; padding: 0; }
 .muted, .note, .hint { color: var(--muted); font-size: 13px; }
 .source-note { font-size: 13px; color: var(--muted); }
+#model-inclusion-picker { padding: 9px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+#model-inclusion-picker > summary { padding: 4px 0; }
+#inclusion-count { margin-inline-start: 9px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; font-weight: 400; }
+#model-inclusion-picker .inclusion-toggle {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 2px 3px;
+  border: 0; background: transparent; color: var(--ink); font-size: 14px; font-weight: 650; text-align: start;
+}
+#model-inclusion-picker .inclusion-toggle::before {
+  content: ""; box-sizing: border-box; display: inline-grid; place-items: center; flex: 0 0 16px; height: 16px;
+  border: 1px solid var(--muted); border-radius: 3px; color: white; font: bold 13px/1 var(--sans);
+}
+#model-inclusion-picker .inclusion-toggle[aria-checked="true"]::before { content: "✓"; background: var(--teal); border-color: var(--teal); }
+#model-inclusion-picker .inclusion-toggle[aria-checked="mixed"]::before { content: "−"; background: var(--teal); border-color: var(--teal); }
+#model-inclusion-picker .inclusion-families { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px 20px; margin: 5px 0 8px; }
+#model-inclusion-picker fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+#model-inclusion-picker legend { padding: 0; }
+#model-inclusion-picker .inclusion-members { margin: 3px 0 0 10px; padding-left: 12px; border-left: 1px solid var(--line); }
+#model-inclusion-picker .inclusion-members label { align-items: baseline; gap: 8px; padding: 4px 0; cursor: pointer; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
+#model-inclusion-picker input { flex: none; margin: 0; accent-color: var(--teal); }
+@media (forced-colors: active) {
+  #model-inclusion-picker .inclusion-toggle::before { border-color: ButtonText; color: ButtonText; }
+}
 .table-scroll { width: 100%; overflow: auto; }
 .data-table .selected-row > td { background: #e9f3eb; }
 .segmented { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 7px; background: #f0f4ee; }

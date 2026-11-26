@@ -11,7 +11,7 @@ import numpy  # noqa: F401
 from dash import Dash, Input, Output, State, dcc, html, no_update
 from flask import Flask, Response, request
 
-from wordviz import custom_domains, experiments, explore, model_details, norm_views, paths
+from wordviz import custom_domains, experiments, explore, model_details, model_inclusion, norm_views, paths
 from wordviz.social_domains import DOMAIN_LABELS, key_for
 
 
@@ -116,6 +116,7 @@ def page_content(path):
                 value="gender", clearable=False, searchable=False)),
             html.Div(experiments.model_fields("social"), id="social-models", className="model-selectors"),
         ], className="controls social-toolbar"),
+        model_inclusion.layout(),
         custom_domains.layout(),
         dcc.Store(id="session-targets"),
         html.Div(id="bias-content"),
@@ -154,8 +155,17 @@ def open_page(pathname):
     ], navigation(path)
 
 
-for view in (explore, experiments, paths, norm_views, custom_domains):
+for view in (explore, experiments, paths, norm_views, custom_domains, model_inclusion):
     view.register(dashboard)
+
+
+dashboard.clientside_callback(
+    """function(method) {
+        return ["priming", "valence", "emotion"].includes(method)
+            ? ["Highlight network", "Second highlight"] : ["Network", "Compare with"];
+    }""",
+    Output("social-a-label", "children"), Output("social-b-label", "children"), Input("bias-view", "value"),
+)
 
 
 @dashboard.callback(Output("bias-content", "children"), Output("social-models", "hidden"),

@@ -19,6 +19,7 @@ from .social_domains import DOMAIN_PRIMES, key_for, label_for, primes_for, resol
 from .paired_presets import paired_presets
 from .target_presets import TARGET_PRESETS
 from .model_options import model_options
+from .model_inclusion import included_models
 
 ACCENT = "#17735f"
 SECONDARY = "#bf6b36"
@@ -34,7 +35,7 @@ def field(label, control, persistence=True):
     # Dash unmounts the controls when the user switches experiment views.
     control.persistence = persistence
     control.persistence_type = "memory"
-    return html.Div([html.Label(label, htmlFor=control.id), control], className="field")
+    return html.Div([html.Label(label, htmlFor=control.id, id=control.id + "-label"), control], className="field")
 
 
 def model_fields(prefix):
@@ -385,7 +386,7 @@ def effect_panels(labels, charts):
 
 def gender_effect(models, groups, values, pairs, canonical):
     # A model contributes when its matrix contains both primes of every selected pair.
-    cohort = list(MODELS)
+    cohort = list(values)
     required = {prime for pair in pairs for prime in pair}
     available = metadata("provenance")
     eligible = [m for m in cohort if required.issubset(available[m]["gender"].get("primes", metadata("primes")))]
@@ -457,10 +458,10 @@ def heatmap(model, groups, primes, values, labels=None, missing_primes=()):
     )
 
 
-def selection_problem(domain, a, b, groups, pair=None):
-    if domain is None or a not in MODELS or (b and b not in MODELS):
+def selection_problem(domain, a, b, groups, pair=None, highlights_only=False):
+    if domain is None or (not highlights_only and (a not in MODELS or (b and b not in MODELS))):
         return "Choose a domain and a network."
-    if a == b:
+    if not highlights_only and a == b:
         return "Choose a different comparison network, or clear Compare with."
     if pair and not all(groups):
         missing = [f"{label} (prime {prime})" for words, label, prime in zip(groups, pair["labels"], pair["primes"]) if not words]
@@ -504,40 +505,36 @@ def activation_sources(domain, models, infos=None):
                          html.Ul(notes)])
 
 
-def contrast_results(models, targets, left, right, values):
+def contrast_results(models, targets, left, right, values, highlights=()):
     shared = [w for w in targets if all(
         all(prime in values[m].get(w, {}) for prime in (left, right)) for m in models
     )]
     missing = [w for w in targets if w not in shared]
-    coverage = f"{len(shared)}/{len(targets)} targets have both prime values in every selected network."
+    coverage = f"{len(shared)}/{len(targets)} targets have both prime values in all {len(models)} eligible networks."
     if missing:
         coverage += " Excluded targets include " + ", ".join(missing) + "."
     if not shared:
         return [html.P(coverage, role="status")]
-    rows, effects = [], []
+    rows, effects, details = [], [], []
     for model in models:
         deltas = [values[model][w][left] - values[model][w][right] for w in shared]
         effect, p, nonzero, method = two_sided_signed_rank(deltas)
         effects.append(effect)
         displayed_p = format_p(p) if p in (None, 0) else f"{p:.4g}"
+        details.append([len(deltas), displayed_p])
         rows.append([MODELS[model], len(deltas), nonzero, f"{sum(deltas) / len(deltas):+.4f}",
                      "—" if effect is None else f"{effect:+.3f}", displayed_p, method])
     chart = []
     if any(effect is not None for effect in effects):
-        figure = go.Figure(go.Bar(
-            x=[MODELS[m] for m in models], y=effects, marker_color=[ACCENT, SECONDARY][:len(models)],
-            hovertemplate="%{x}<br>Signed-rank effect %{y:+.3f}<extra></extra>",
-        ))
-        style_figure(figure, 330).update_layout(showlegend=False, yaxis_title="Signed-rank effect (z/√N)")
-        model_axis(figure, models)
-        figure.update_yaxes(range=[-1.1, 1.1])
+        figure = model_bars(f"{left} versus {right}", models, highlights, effects, [], details)
+        figure.update_xaxes(range=[-1.1, 1.1])
         chart.append(graph(figure))
     return [
         html.P(f"Positive values indicate greater activation after {left}. Negative values favor {right}. "
                "The paired observations are the selected target words."),
         *chart,
         result_table(["Network", "Targets", "Nonzero differences", "Mean difference", "Effect", "Two-sided p", "P-value method"],
-                     rows, label="Custom priming contrast"),
+                     rows, selected=[MODELS[m] for m in highlights], label="Custom priming contrast"),
         html.P(coverage, className="source-note"),
         html.P(f"The exploratory Wilcoxon signed-rank test uses exact sign permutations for up to {EXACT_SIGN_RANK_LIMIT} "
                "nonzero differences and a tie-corrected normal approximation for larger samples. "
@@ -588,7 +585,8 @@ def holm_adjust(results):
 
 def paired_effect(pair, groups, info, values, models):
     primes = pair["primes"]
-    eligible = [m for m in MODELS if not info[m]["missing_primes"]]
+    cohort = list(info)
+    eligible = [m for m in cohort if not info[m]["missing_primes"]]
     rows, notes = [], []
     for i, (label, words) in enumerate(zip(pair["labels"], groups)):
         preferred, other = primes[i], primes[1 - i]
@@ -598,7 +596,7 @@ def paired_effect(pair, groups, info, values, models):
         if excluded:
             coverage += " Excluded: " + ", ".join(excluded) + "."
         notes.append(html.Li(coverage))
-        for model in MODELS:
+        for model in cohort:
             deltas = [values[model][w][preferred] - values[model][w][other] for w in matched] if model in eligible else []
             effect, p, nonzero, method = contrast_signed_rank(deltas, directional=True)
             if model not in eligible:
@@ -610,18 +608,18 @@ def paired_effect(pair, groups, info, values, models):
     holm_adjust(rows)
     charts = []
     for i, label in enumerate(pair["labels"]):
-        group_rows = rows[i * len(MODELS):(i + 1) * len(MODELS)]
+        group_rows = rows[i * len(cohort):(i + 1) * len(cohort)]
         all_tied = [MODELS[r["model"]] for r in group_rows if r["count"] and not r["nonzero"]]
         if all_tied:
             notes.append(html.Li(f"{label} has only zero activation differences in " + ", ".join(all_tied)
                                  + ". The effect and p-value are undefined."))
-        charts.append(model_bars(label, MODELS, models, [r["effect"] for r in group_rows],
+        charts.append(model_bars(label, cohort, models, [r["effect"] for r in group_rows],
                       ["*" if r["adjusted"] is not None and r["adjusted"] < .05 else "" for r in group_rows],
                       [[r["count"], format_p(r["p"])] for r in group_rows]))
     table = [[MODELS[r["model"]], r["group"], r["preferred"], r["count"], r["nonzero"],
               "—" if r["effect"] is None else f'{r["effect"]:+.3f}', format_p(r["p"]),
               format_p(r["adjusted"]), r["method"]] for r in rows]
-    missing = [f"{MODELS[m]} ({', '.join(info[m]['missing_primes'])})" for m in MODELS if m not in eligible]
+    missing = [f"{MODELS[m]} ({', '.join(info[m]['missing_primes'])})" for m in cohort if m not in eligible]
     labels = [f"{label} · {prime}" for label, prime in zip(pair["labels"], primes)]
     return [
         html.P(f"For the {pair['labels'][0]} list, each word’s difference is activation from "
@@ -649,19 +647,23 @@ def paired_effect(pair, groups, info, values, models):
     ]
 
 
-def render_effect(domain, a, b, first, second, pair_text, left, right, paired_name=None):
+def render_effect(domain, a, b, first, second, pair_text, left, right, paired_name=None, included=None):
     domain = resolve_domain(domain)
+    cohort = included_models(included)
+    if not cohort:
+        return html.P("Select at least one network in Networks shown.", className="panel", role="status")
     pair = named_choice(domain, paired_name)[0] if domain and paired_name else None
     groups = selected_groups(domain, first, second, bool(pair))
-    problem = selection_problem(domain, a, b, groups, pair)
+    problem = selection_problem(domain, a, b, groups, pair, highlights_only=True)
     if problem:
         return html.P(problem, role="status")
     models = selected_models(a, b)
     if pair:
-        info, values = paired_data(pair["primes"], groups, MODELS)
+        info, values = paired_data(pair["primes"], groups, cohort)
         return html.Section([html.H2(f"{label_for(domain)} priming effects"),
                              *paired_effect(pair, groups, info, values, models),
-                             activation_sources(domain, MODELS, info)], className="panel")
+                             activation_sources(domain, cohort, info)], className="panel")
+    info = None
     if domain == "gender":
         try:
             pairs = parse_pairs(pair_text, DOMAIN_PRIMES[domain])
@@ -669,26 +671,25 @@ def render_effect(domain, a, b, first, second, pair_text, left, right, paired_na
             return html.P(str(err), role="status")
         canonical = (all(set(chosen) == set(original) for chosen, original in zip(groups, metadata("targets")))
                      and set(pairs) == set(DEFAULT_PAIRS))
-        values = domain_values(domain, groups[0] + groups[1], list(MODELS))
+        values = domain_values(domain, groups[0] + groups[1], cohort)
         body = [*gender_effect(models, groups, values, pairs, canonical),
                 html.A("Paper Figure 3 and methods", href=BIAS_PAPER)]
     else:
         if left not in primes_for(domain) or right not in primes_for(domain) or left == right:
             return html.P("Choose two different primes to compare their activation across the selected targets.",
                           className="panel", role="status")
-        absent = []
-        for model in models:
-            available = domain_info(domain, model)["primes"]
-            missing = [prime for prime in (left, right) if prime not in available]
-            if missing:
-                absent.append(f"{MODELS[model]} ({', '.join(missing)})")
+        info = {m: domain_info(domain, m) for m in cohort}
+        eligible = [m for m in cohort if left in info[m]["primes"] and right in info[m]["primes"]]
+        body = [html.H3(f"{left} versus {right}")]
+        if eligible:
+            values = domain_values(domain, groups[0], eligible)
+            body.extend(contrast_results(eligible, groups[0], left, right, values, models))
+        absent = [f"{MODELS[m]} ({', '.join(p for p in (left, right) if p not in info[m]['primes'])})"
+                  for m in cohort if m not in eligible]
         if absent:
-            return html.P("This contrast requires prime columns missing from " + ", ".join(absent) + ".",
-                          className="panel", role="status")
-        values = domain_values(domain, groups[0], models)
-        body = [html.H3(f"{left} versus {right}"), *contrast_results(models, groups[0], left, right, values)]
+            body.append(html.P("Networks missing a prime: " + ", ".join(absent) + ".", role="status"))
     return html.Section([html.H2(f"{label_for(domain)} priming effects"),
-                         *body, activation_sources(domain, MODELS if domain == "gender" else models)], className="panel")
+                         *body, activation_sources(domain, cohort, info)], className="panel")
 
 
 def render_heatmaps(domain, a, b, first, second, selected_primes, paired_name=None):
@@ -757,9 +758,11 @@ def register_stimuli(app):
         target = f"bias-targets-{i}"
 
         @app.callback(Output(target, "options"), Input(target, "search_value"), Input("social-a", "value"),
-                      Input("social-b", "value"), Input(target, "value"), State("target-domain", "data"))
-        def suggestions(query, a, b, chosen, domain):
-            matches = domain_suggest(resolve_domain(domain), query, selected_models(a, b))
+                      Input("social-b", "value"), Input(target, "value"), Input("included-models", "data"),
+                      State("target-domain", "data"), State("bias-view", "value"))
+        def suggestions(query, a, b, chosen, included, domain, method):
+            models = included_models(included) if method == "priming" else selected_models(a, b)
+            matches = domain_suggest(resolve_domain(domain), query, models)
             return list(dict.fromkeys([*(chosen or []), *matches]))
 
     app.callback(Output("target-editor", "children"), Input("target-domain", "data"),
@@ -816,7 +819,7 @@ def register(app: Dash):
                  Input("effect-pairs", "value", allow_optional=True),
                  Input("effect-left", "value", allow_optional=True),
                  Input("effect-right", "value", allow_optional=True),
-                 Input("paired-targets", "data", allow_optional=True))(render_effect)
+                 Input("paired-targets", "data", allow_optional=True), Input("included-models", "data"))(render_effect)
     app.callback(Output("heat-results", "children"), Input("heat-domain", "data"),
                  Input("social-a", "value"), Input("social-b", "value"), Input("bias-targets-0", "value", allow_optional=True),
                  Input("bias-targets-1", "value", allow_optional=True), Input("heat-primes", "value", allow_optional=True),

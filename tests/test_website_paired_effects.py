@@ -55,6 +55,16 @@ class PairedStudyEffects(unittest.TestCase):
         self.assertIn("Remove", selection_problem("religion", "Humans", None, [["a"], ["t"]], pair))
         self.assertIn("one group", selection_problem("religion", "Humans", None, [["w"], ["w"]], pair))
 
+        # Excluding the network that lacked "y" adds it back to the matched
+        # sample. Holm now covers just the two tests from the retained network.
+        only_humans = paired_effect(pair, groups, {"Humans": info["Humans"]}, values, ["Llama3"])
+        for panel in only_humans[1].children:
+            self.assertEqual(list(panel.children[1].figure.data[0].y), ["Humans"])
+        details = next(child for child in only_humans if child.__class__.__name__ == "Details")
+        rows = details.children[1].children.children[1].children
+        self.assertEqual(len(rows), 2)
+        self.assertEqual([cell.children for cell in rows[0].children][3:8], [3, 3, "+1.000", "0.125", "0.250"])
+
 
 if __name__ == "__main__":
     unittest.main()

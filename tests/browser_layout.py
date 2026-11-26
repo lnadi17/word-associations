@@ -24,6 +24,84 @@ def check_width(page):
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
 
 
+def check_touch_scroll(page, results):
+    if page.viewport_size["width"] > 400 or page.context.browser.browser_type.name != "chromium":
+        return
+    region = results.get_by_role("region", name=re.compile("chart$"))
+    if not region.evaluate("el => el.scrollWidth > el.clientWidth"):
+        return
+    region.scroll_into_view_if_needed()
+    rect = region.bounding_box()
+    start = rect["x"] + rect["width"] * .85
+    y = rect["y"] + rect["height"] * .45
+    touch = page.context.new_cdp_session(page)
+    try:
+        touch.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": start, "y": y}]})
+        for distance in (20, 40, 70, 100, 140):
+            touch.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": start - distance, "y": y}]})
+        touch.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+        page.wait_for_function("el => el.scrollLeft > 50", arg=region.element_handle())
+    finally:
+        touch.detach()
+
+
+def check_network_inclusion(page, methods):
+    count = len(MATRIX_MODELS)
+    family_count = sum(key.lower().startswith("gemma") for key in MATRIX_MODELS)
+    picker = page.locator("#model-inclusion-picker")
+    valence = page.locator("#valence-results")
+    emotion = page.locator("#emotion-results")
+    traces = ".scatterlayer .trace"
+    all_models = picker.get_by_role("checkbox", name="All networks", exact=True)
+    gemma = picker.get_by_role("checkbox", name="Gemma family", exact=True)
+    picker.locator("summary").click()
+    expect(all_models).to_be_checked()
+    all_models.click()
+    expect(valence.get_by_role("status")).to_be_visible()
+    expect(valence.locator(".dash-graph")).to_have_count(0)
+    gemma.click()
+    expect(gemma).to_be_checked()
+    expect(valence.locator(traces)).to_have_count(family_count)
+    expect(valence.locator("table").first.locator(".selected-row")).to_have_count(0)
+
+    # Dropdowns highlight only included models. An excluded primary stays excluded.
+    marker_size = valence.locator(".js-plotly-plot").evaluate(
+        "el => el.data.find(trace => trace.name === 'Gemma').marker.size"
+    )
+    search_model(page, "social-a", "Gemma")
+    expect(valence.locator("table").first.locator(".selected-row")).to_have_text([re.compile("Gemma")])
+    expect(valence.locator(".series-legend")).to_contain_text("Gemma")
+    page.wait_for_function("""oldSize => {
+        const traces = document.querySelector('#valence-results .js-plotly-plot')?.data;
+        return traces?.find(trace => trace.name === 'Gemma')?.marker.size > oldSize;
+    }""", arg=marker_size)
+    if family_count > 1:
+        picker.get_by_role("checkbox", name="Gemma", exact=True).click()
+        expect(gemma).to_have_attribute("aria-checked", "mixed")
+        expect(valence.locator(traces)).to_have_count(family_count - 1)
+        expect(valence.locator("table").first.locator(".selected-row")).to_have_count(0)
+        family_count -= 1
+    methods.get_by_text("Emotion word sets", exact=True).click()
+    expect(emotion.locator(traces)).to_have_count(family_count)
+    expect(emotion.locator("table tbody tr")).to_have_count(8 * family_count)
+
+    page.reload()
+    methods.get_by_text("Emotion word sets", exact=True).click()
+    expect(emotion.locator(traces)).to_have_count(family_count)
+    methods.get_by_text("Priming effects", exact=True).click()
+    expect(page.locator("#effect-results .dash-graph").first.locator(".ytick")).to_have_count(family_count)
+    if not picker.evaluate("el => el.open"):
+        picker.locator("summary").click()
+    all_models.click()
+    expect(all_models).to_be_checked()
+    picker.locator("summary").click()
+    search_model(page, "social-a", "Humans")
+    search_model(page, "social-b", "GPT-5 mini")
+    methods.get_by_text("Word valence", exact=True).click()
+    expect(valence.locator(traces)).to_have_count(count)
+    check_width(page)
+
+
 def choose(page, control, option):
     dropdown = page.locator("#" + control)
     dropdown.locator(".Select-control").click()
@@ -129,7 +207,7 @@ def check_page(page, url):
     choose(page, "effect-left", "christian")
     choose(page, "effect-right", "muslim")
     expect(page.locator("#effect-results")).to_contain_text("christian versus muslim")
-    expect(page.locator("#effect-results table tbody tr")).to_have_count(2)
+    expect(page.locator("#effect-results table tbody tr")).to_have_count(len(MATRIX_MODELS))
 
     methods = page.locator("#bias-view")
     check_religion_targets(page, methods)
@@ -142,7 +220,9 @@ def check_page(page, url):
     expect(valence.locator(".xtick text").last).to_be_visible()
     expect(valence.locator(".ytitle")).to_have_text("Valence slope")
     expect(valence.locator(".errorbars .yerror").first).to_be_visible()
-    expect(page.locator("#valence-results table").first.locator("tbody tr")).to_have_count(2)
+    expect(page.locator("#valence-results table").first.locator("tbody tr")).to_have_count(len(MATRIX_MODELS))
+    expect(valence.locator(".scatterlayer .trace")).to_have_count(len(MATRIX_MODELS))
+    check_network_inclusion(page, methods)
     choose(page, "social-domain", "Political party (US)")
     methods.get_by_text("Emotion word sets", exact=True).click()
     emotion = page.locator("#emotion-results .dash-graph")
@@ -151,10 +231,13 @@ def check_page(page, url):
     expect(emotion.locator(".xaxislayer-above .xtick")).to_contain_text(["anger", "trust"])
     expect(emotion.locator(".xtick text").last).to_be_visible()
     expect(emotion.locator(".ytitle")).to_have_text("Signed-rank effect (z/√N)")
-    expect(page.locator("#emotion-results table tbody tr")).to_have_count(16)
+    expect(page.locator("#emotion-results table tbody tr")).to_have_count(8 * len(MATRIX_MODELS))
+    expect(emotion.locator(".scatterlayer .trace")).to_have_count(len(MATRIX_MODELS))
+    check_touch_scroll(page, page.locator("#emotion-results"))
     check_width(page)
 
     methods.get_by_text("Association paths", exact=True).click()
+    expect(page.locator("#model-inclusion-picker")).to_be_hidden()
     expect(page.locator("#path-start")).to_contain_text("democrat")
     expect(page.locator("#path-b")).to_contain_text("GPT-5 mini")
     check_chart(page.locator("#path-results .dash-graph").first, ".scatterlayer .point", 185)
@@ -259,10 +342,10 @@ def check_custom_domain(page, methods):
     expect(page.locator("#heat-results .dash-graph").first.locator(".ytick text")).to_have_text(["active", "quick"])
     methods.get_by_text("Word valence", exact=True).click()
     expect(page.locator("#valence-results .dash-graph .xtick text")).to_have_text(["young", "old"])
-    expect(page.locator("#valence-results table").first.locator("tbody tr")).to_have_count(2)
+    expect(page.locator("#valence-results table").first.locator("tbody tr")).to_have_count(len(MATRIX_MODELS))
     methods.get_by_text("Emotion word sets", exact=True).click()
-    expect(page.locator("#emotion-results table tbody tr")).to_have_count(16)
-    expect(page.locator("#emotion-results .scatterlayer .point")).to_have_count(16)
+    expect(page.locator("#emotion-results table tbody tr")).to_have_count(8 * len(MATRIX_MODELS))
+    expect(page.locator("#emotion-results .scatterlayer .point")).to_have_count(8 * len(MATRIX_MODELS))
     methods.get_by_text("Association paths", exact=True).click()
     choose(page, "path-list", "Energy")
     expect(page.locator("#path-results h3").first).to_have_text("young → active")
