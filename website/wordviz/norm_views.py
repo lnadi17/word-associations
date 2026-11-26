@@ -15,8 +15,18 @@ from .norm_lexicons import NormSourceError, load_lexicons
 from .social_domains import key_for, label_for, primes_for, resolve_domain
 
 
+def chart_selector(method):
+    return html.Fieldset([
+        html.Legend("Visualization", className="field-label"),
+        dcc.RadioItems(id=f"{method}-chart-view", options=[
+            {"label": "Table", "value": "matrix"}, {"label": "Scatter plot", "value": "scatter"},
+        ], value="matrix", className="segmented", persistence=True, persistence_type="memory"),
+    ], className="field norm-chart-selector")
+
+
 def valence_layout(domain):
     return html.Div([dcc.Store(id="valence-domain", data=domain),
+                     html.Div(chart_selector("valence"), className="controls"),
                      dcc.Loading(html.Div(id="valence-results"))])
 
 
@@ -30,7 +40,8 @@ def emotion_layout(domain):
             dcc.Dropdown(id=control_id, options=list(primes), value=primes[i], clearable=False,
                          persistence=key_for(domain), persistence_type="memory"),
         ], className="field"))
-    return html.Div([dcc.Store(id="emotion-domain", data=domain), html.Div(fields, className="controls"),
+    return html.Div([dcc.Store(id="emotion-domain", data=domain),
+                     html.Div([*fields, chart_selector("emotion")], className="controls"),
                      dcc.Loading(html.Div(id="emotion-results"))])
 
 
@@ -38,11 +49,84 @@ def number(value):
     return "—" if value is None else f"{value:.3f}"
 
 
+CONTEXT = "#849491"
+
+
+def scatter_chart(results, categories, category_key, category_title, value_key, value_title, a, b):
+    plotted = {model: [row for row in result["rows"] if row[value_key] is not None]
+               for model, result in results.items()}
+    plotted = {model: rows for model, rows in plotted.items() if rows}
+    if not plotted:
+        return html.P("None of the included networks has an estimate for this comparison.", role="status")
+    offsets = {model: 0 if len(plotted) == 1 else .72 * (i / (len(plotted) - 1) - .5)
+               for i, model in enumerate(plotted)}
+    colors = {a: (ACCENT, "circle")}
+    if b != a:
+        colors[b] = (SECONDARY, "diamond")
+    # Offsets follow the cohort order even when highlights move to the foreground.
+    fig = go.Figure()
+    for model in sorted(plotted, key=lambda m: m in colors):
+        rows = plotted[model]
+        labels = [row[category_key] for row in rows]
+        values = [row[value_key] for row in rows]
+        color, symbol = colors.get(model, (CONTEXT, "circle"))
+        highlighted = model in colors
+        details = [[row[category_key], row["n"], format_p(row["p"])] for row in rows]
+        error = None
+        if value_key == "slope":
+            error = {"type": "data", "symmetric": False, "thickness": 1.6 if highlighted else 1,
+                     "width": 3 if highlighted else 1,
+                     "array": [r["ci_high"] - r["slope"] if r["ci_high"] is not None else None for r in rows],
+                     "arrayminus": [r["slope"] - r["ci_low"] if r["ci_low"] is not None else None for r in rows]}
+            for detail, row in zip(details, rows):
+                detail.extend([number(row["ci_low"]), number(row["ci_high"])])
+            diagnostics = "<br>95% CI [%{customdata[3]}, %{customdata[4]}]"
+        else:
+            for detail, row in zip(details, rows):
+                detail.append(row["nonzero"])
+            diagnostics = "<br>Nonzero pairs %{customdata[3]:,}"
+        fig.add_scatter(name=MATRIX_MODELS[model], x=[categories.index(label) + offsets[model] for label in labels],
+                        y=values, mode="markers", opacity=1 if highlighted else .78,
+                        marker={"size": 10 if highlighted else 5, "color": color, "symbol": symbol},
+                        error_y=error, customdata=details,
+                        hovertemplate=("%{customdata[0]}<br>" + value_title +
+                                       " %{y:+.3f}" + diagnostics +
+                                       "<br>Words %{customdata[1]:,}<br>p %{customdata[2]}<extra>%{fullData.name}</extra>"))
+    style_figure(fig, 375)
+    # Keep touch drags available for horizontal scrolling through the categories.
+    fig.update_layout(margin={"l": 50, "r": 15, "t": 16, "b": 40}, showlegend=False, dragmode=False)
+    fig.update_xaxes(title_text=category_title, tickmode="array", tickvals=list(range(len(categories))),
+                     ticktext=categories, range=[-.5, len(categories) - .5], showgrid=False,
+                     zeroline=False, automargin=True, autotickangles=[0, 90], title_standoff=8)
+    fig.update_yaxes(title_text=value_title, title_standoff=8, automargin=True, rangemode="tozero",
+                     zeroline=True, zerolinewidth=2, zerolinecolor="#657b72")
+    legend = [(MATRIX_MODELS[m], *style) for m, style in colors.items() if m in plotted]
+    others = [m for m in plotted if m not in colors]
+    if others:
+        label = MATRIX_MODELS[others[0]] if len(others) == 1 else f"{len(others)} {'other ' if legend else ''}networks"
+        legend.append((label, CONTEXT, "circle"))
+    key = html.Ul([html.Li([html.Span(className="series-swatch", style={
+        "backgroundColor": color, "width": "8px", "height": "8px",
+        "borderRadius": "50%" if symbol == "circle" else 0,
+        "transform": "rotate(45deg)" if symbol == "diamond" else "none",
+    }), name]) for name, color, symbol in legend], className="series-legend",
+        **{"aria-label": "Highlighted and included networks"})
+    # At small viewport widths, give dense point groups enough horizontal room
+    # to inspect; the page and the legend stay inside the viewport.
+    width = 70 + len(categories) * max(22, 4 * len(plotted))
+    plot = html.Div(html.Div(graph(fig), style={"minWidth": f"{width}px"}),
+                    className="table-scroll", tabIndex=0, role="region", **{"aria-label": value_title + " chart"})
+    return html.Div([key, plot])
+
+
 # A shared scale lets the same color represent the same estimate across networks.
 MATRIX_COLORS = ["#cb8e65", "#ead2bc", "#faf9f5", "#bedbe1", "#639caf"]
 
 
-def norm_chart(results, categories, category_key, category_title, value_key, value_title, a, b, export_title):
+def norm_chart(results, categories, category_key, category_title, value_key, value_title, a, b,
+               export_title, chart_view="matrix"):
+    if chart_view == "scatter":
+        return scatter_chart(results, categories, category_key, category_title, value_key, value_title, a, b)
     valence = value_key == "slope"
     values, details, cell_text = [], [], []
     for result in results.values():
@@ -189,7 +273,7 @@ def coverage(results, primes, value_key):
                           html.Ul([html.Li(f"{note} {' · '.join(names)}") for note, names in notes.items()])])]
 
 
-def valence_view(domain, a, b, included=None):
+def valence_view(domain, a, b, included=None, chart_view="matrix"):
     domain = resolve_domain(domain)
     models = included_models(included)
     status = cohort_status(domain, models)
@@ -207,12 +291,16 @@ def valence_view(domain, a, b, included=None):
             joint_rows.append([MATRIX_MODELS[model], f'{joint["n"]:,}', number(joint["statistic"]),
                                joint["df"], format_p(joint["p"]), number(joint["partial_r2"])])
     scope = "Figures 10–11 method" if domain in ("religion", "ethnicity", "orientation") else "Exploratory application"
+    guide = ("Each point is one network’s slope for a prime. Whiskers show its 95% confidence interval."
+             if chart_view == "scatter" else
+             "Hover or tap a cell for its 95% confidence interval, word count and p-value.")
     return html.Section([
         html.H2("Activation and word valence"),
-        html.P(f"{scope} · {label_for(domain)}. A positive slope means words reached more strongly by that prime tend to have higher human pleasantness ratings. Hover or tap a cell for its 95% confidence interval, word count and p-value."),
+        html.P(f"{scope} · {label_for(domain)}. A positive slope means words reached more strongly by that prime "
+               f"tend to have higher human pleasantness ratings. {guide}"),
         *coverage(results, primes_for(domain), "slope"),
         norm_chart(results, primes_for(domain), "prime", "Prime", "slope", "Valence slope", a, b,
-                   f"{label_for(domain)} · Activation and word valence"),
+                   f"{label_for(domain)} · Activation and word valence", chart_view),
         html.H3("Do slopes differ across primes?"),
         html.P("The joint Wald test compares the prime coefficients in one model of word valence. Partial R² measures the additional variation explained by allowing these coefficients to differ."),
         result_table(["Network", "Rated words", "Wald χ²", "df", "p", "Partial R²"], joint_rows,
@@ -227,7 +315,7 @@ def valence_view(domain, a, b, included=None):
     ], className="panel")
 
 
-def emotion_view(domain, a, b, left, right, included=None):
+def emotion_view(domain, a, b, left, right, included=None, chart_view="matrix"):
     domain = resolve_domain(domain)
     models = included_models(included)
     status = cohort_status(domain, models)
@@ -243,13 +331,15 @@ def emotion_view(domain, a, b, left, right, included=None):
             rows.append([MATRIX_MODELS[model], row["emotion"], row["n"], row["nonzero"],
                          number(row["effect"]), format_p(row["p"])])
     scope = "Figure 12 method" if domain == "politics" else "Exploratory application"
+    guide = ("Each point is one network’s effect for an emotion. Hover or tap it for the word counts and p-value."
+             if chart_view == "scatter" else "Hover or tap a cell for the word counts and p-value.")
     return html.Section([
         html.H2("Activation by emotion word set"),
         html.P(f"{scope} · {label_for(domain)}. Positive effects mean words in a set received stronger activation from {left}. "
-               f"Negative effects favor {right}. Hover or tap a cell for the word counts and p-value."),
+               f"Negative effects favor {right}. {guide}"),
         *coverage(results, (left, right), "effect"),
         norm_chart(results, EMOTIONS, "emotion", "Emotion word set", "effect", "Signed-rank effect (z/√N)", a, b,
-                   f"{label_for(domain)} · Emotion word sets · {left} versus {right}"),
+                   f"{label_for(domain)} · Emotion word sets · {left} versus {right}", chart_view),
         html.Details([html.Summary("Paired test statistics"), result_table(
             ["Network", "Emotion", "Matched words", "Nonzero pairs", "Effect", "Two-sided p"], rows,
             selected, label="Emotion word set tests")]),
@@ -293,7 +383,9 @@ def register(app):
     # Only the mounted panel requests a plot. A global domain change also
     # replaces the panel, so listening to it here would redraw a removed graph.
     app.callback(Output("valence-results", "children"), Input("valence-domain", "data"),
-                 Input("social-a", "value"), Input("social-b", "value"), Input("included-models", "data"))(valence_view)
+                 Input("social-a", "value"), Input("social-b", "value"), Input("included-models", "data"),
+                 Input("valence-chart-view", "value"))(valence_view)
     app.callback(Output("emotion-results", "children"), Input("emotion-domain", "data"),
                  Input("social-a", "value"), Input("social-b", "value"),
-                 Input("emotion-left", "value"), Input("emotion-right", "value"), Input("included-models", "data"))(emotion_view)
+                 Input("emotion-left", "value"), Input("emotion-right", "value"), Input("included-models", "data"),
+                 Input("emotion-chart-view", "value"))(emotion_view)

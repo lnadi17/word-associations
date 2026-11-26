@@ -123,6 +123,8 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
 }
 .table-scroll { width: 100%; overflow: auto; }
 .norm-scale { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 14px 0 12px; color: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; }
+.norm-chart-selector { margin: 0; padding: 0; border: 0; }
+.norm-chart-selector legend { padding: 0; }
 .norm-scale strong { margin-right: 5px; }
 .norm-scale .norm-download { margin-left: auto; min-height: 30px; padding: 4px 9px; font-size: 12px; }
 .norm-scale-ramp { position: relative; display: grid; place-items: center; width: 86px; height: 17px; background: var(--norm-gradient); border-radius: 3px; }

@@ -54,6 +54,32 @@ def check_matrix(results, categories):
     }""")
 
 
+def check_norm_scatter(page, method):
+    results = page.locator(f"#{method}-results")
+    switch = page.locator(f"#{method}-chart-view")
+    expect(switch.get_by_role("radio", name="Table", exact=True)).to_be_checked()
+    graph = results.locator(".dash-graph")
+    plot = graph.locator(".js-plotly-plot")
+    expect(graph.locator(".heatmaplayer image")).to_be_visible()
+    matrix = plot.evaluate("el => { const {x, y, z} = el.data[0]; return {x, y, z}; }")
+    expected = {(model, category): value for model, row in zip(matrix["y"], matrix["z"])
+                for category, value in zip(matrix["x"], row) if value is not None}
+    stats = results.locator("table").all_text_contents()
+    switch.get_by_text("Scatter plot", exact=True).click()
+    check_chart(graph, ".scatterlayer .point", 320)
+    expect(graph.locator(".xtick text")).to_have_text(matrix["x"])
+    traces = plot.evaluate("""el => el.data.map(trace => ({
+        model: trace.name, categories: trace.customdata.map(row => row[0]), values: trace.y,
+        hasIntervals: Boolean(trace.error_y?.array?.length)
+    }))""")
+    points = {(trace["model"], category): value for trace in traces
+              for category, value in zip(trace["categories"], trace["values"])}
+    assert points == expected
+    assert all(trace["hasIntervals"] == (method == "valence") for trace in traces)
+    assert results.locator("table").all_text_contents() == stats
+    check_width(page)
+
+
 def check_touch_scroll(page, results):
     if page.viewport_size["width"] > 400 or page.context.browser.browser_type.name != "chromium":
         return
@@ -110,6 +136,15 @@ def check_network_inclusion(page, methods):
     search_model(page, "social-a", legacy_gemma)
     expect(valence.get_by_label("Joint valence tests").locator(".selected-row th")).to_have_text([legacy_gemma])
     expect(valence.locator(".norm-matrix-row[data-highlight=primary]")).to_contain_text(legacy_gemma)
+    check_norm_scatter(page, "valence")
+    expect(valence.locator(".series-legend")).to_contain_text(legacy_gemma)
+    methods.get_by_text("Emotion word sets", exact=True).click()
+    expect(page.locator("#emotion-chart-view").get_by_role("radio", name="Table", exact=True)).to_be_checked()
+    expect(emotion.locator(matrix_rows)).to_have_count(family_count)
+    methods.get_by_text("Word valence", exact=True).click()
+    expect(valence.locator(".scatterlayer .point").first).to_be_visible()
+    page.locator("#valence-chart-view").get_by_text("Table", exact=True).click()
+    expect(valence.locator(matrix_rows)).to_have_count(family_count)
     if family_count > 1:
         picker.get_by_role("checkbox", name=legacy_gemma, exact=True).click()
         expect(gemma).to_have_attribute("aria-checked", "mixed")
@@ -298,6 +333,12 @@ def check_page(page, url):
     expect(emotion.locator(".norm-matrix-row[data-highlight=primary]")).to_contain_text("Humans")
     expect(emotion.locator(".norm-matrix-row[data-highlight=secondary]")).to_contain_text(MATRIX_MODELS["Gpt5_mini"])
     expect(emotion.get_by_label("Emotion word set tests").locator("tbody tr")).to_have_count(8 * len(MATRIX_MODELS))
+    check_norm_scatter(page, "emotion")
+    for prime_id, prime in (("emotion-left", "democrat"), ("emotion-right", "republican")):
+        expect(page.locator(f"#{prime_id} .Select-value-label")).to_have_text(prime)
+    expect(emotion.locator(".series-legend")).to_contain_text(MATRIX_MODELS["Gpt5_mini"])
+    page.locator("#emotion-chart-view").get_by_text("Table", exact=True).click()
+    expect(emotion.locator(".norm-matrix-row")).to_have_count(len(MATRIX_MODELS))
     with page.expect_download() as downloaded:
         emotion.get_by_role("button", name="Download PNG").click()
     png = downloaded.value

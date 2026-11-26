@@ -18,6 +18,12 @@ from wordviz.social_domains import DOMAIN_PRIMES
 
 
 class BiasNormsTests(unittest.TestCase):
+    def scatter(self, view):
+        chart, = [child for child in view._traverse() if isinstance(child, dcc.Graph)]
+        self.assertTrue(chart.figure.data)
+        self.assertTrue(all(trace.type == "scatter" and trace.mode == "markers" for trace in chart.figure.data))
+        return {trace.name: trace for trace in chart.figure.data}
+
     def heatmap(self, view):
         chart, = [c for c in view._traverse() if isinstance(c, dcc.Graph)]
         matrix, = chart.figure.data
@@ -55,6 +61,51 @@ class BiasNormsTests(unittest.TestCase):
                 ) if before != after]
                 self.assertCountEqual(changed_labels, ["Humans", "Gpt5_mini", "Gemma"])
 
+    def test_valence_scatter_uses_table_estimates_and_stored_intervals(self):
+        cohort = ["Humans", "Gemma", "Gpt5_mini"]
+
+        def render(a, b, chart_view):
+            return valence_view("religion", a, b, cohort, chart_view=chart_view)
+
+        _, matrix = self.heatmap(render("Humans", "Gemma", "matrix"))
+        points = self.scatter(render("Humans", "Gemma", "scatter"))
+        swapped = self.scatter(render("Gemma", "Humans", "scatter"))
+        self.assertCountEqual(points, matrix.y)
+        self.assertCountEqual(points, [MATRIX_MODELS[m] for m in cohort])
+        for model in cohort:
+            name = MATRIX_MODELS[model]
+            with self.subTest(model=name):
+                trace = points[name]
+                stored = {row["prime"]: row for row in valence_result("religion", model)["rows"]}
+                estimates = dict(zip(matrix.x, matrix.z[list(matrix.y).index(name)]))
+                categories = [data[0] for data in trace.customdata]
+                self.assertCountEqual(categories, [prime for prime, value in estimates.items() if value is not None])
+                self.assertEqual(list(trace.y), [estimates[prime] for prime in categories])
+                self.assertEqual(list(trace.error_y.array),
+                                 [stored[p]["ci_high"] - stored[p]["slope"] for p in categories])
+                self.assertEqual(list(trace.error_y.arrayminus),
+                                 [stored[p]["slope"] - stored[p]["ci_low"] for p in categories])
+                self.assertEqual((trace.x, trace.y), (swapped[name].x, swapped[name].y))
+        self.assertEqual(points[MATRIX_MODELS["Gemma"]].marker.symbol, "diamond")
+        self.assertEqual(swapped[MATRIX_MODELS["Humans"]].marker.symbol, "diamond")
+
+    def test_emotion_scatter_reverses_same_estimates_as_table(self):
+        cohort = ["Gpt5_mini"]
+
+        def render(left, right, chart_view):
+            return emotion_view("politics", "Humans", "Gpt5_mini", left, right, cohort, chart_view=chart_view)
+
+        _, matrix = self.heatmap(render("democrat", "republican", "matrix"))
+        forward = self.scatter(render("democrat", "republican", "scatter"))
+        backward = self.scatter(render("republican", "democrat", "scatter"))
+        name, = matrix.y
+        self.assertEqual(list(forward), [name])
+        self.assertEqual([item[0] for item in forward[name].customdata], list(matrix.x))
+        self.assertEqual(list(forward[name].y), list(matrix.z[0]))
+        self.assertEqual(backward[name].x, forward[name].x)
+        self.assertEqual(list(backward[name].y), [-value for value in forward[name].y])
+        self.assertIsNone(forward[name].error_y.array)
+
     def test_inclusion_controls_figure_tables_and_empty_state(self):
         only = ["Gpt5_mini"]
         views = [valence_view("religion", "Humans", "Gpt5_mini", only),
@@ -78,6 +129,11 @@ class BiasNormsTests(unittest.TestCase):
                 {"emotion": "anger", "effect": 0., "n": 7, "nonzero": 3, "p": 1.}]}
         with patch("wordviz.norm_views.emotion_result", side_effect=result):
             view = emotion_view("politics", "Gemma", "Gemma", "democrat", "republican", ["Gemma", "Humans"])
+            scatter = emotion_view("politics", "Gemma", "Gemma", "democrat", "republican",
+                                   ["Gemma", "Humans"], chart_view="scatter")
+        points = self.scatter(scatter)
+        self.assertEqual(list(points), [MATRIX_MODELS["Humans"]])
+        self.assertEqual(list(points[MATRIX_MODELS["Humans"]].y), [0.])
         _, matrix = self.heatmap(view)
         self.assertEqual(list(matrix.y), [MATRIX_MODELS["Humans"], MATRIX_MODELS["Gemma"]])
         self.assertEqual(list(matrix.z[0]), [0. if e == "anger" else None for e in EMOTIONS])
@@ -86,9 +142,10 @@ class BiasNormsTests(unittest.TestCase):
         notes = [c.children for c in view._traverse() if isinstance(c, html.Li) and isinstance(c.children, str)]
         self.assertTrue(any(MATRIX_MODELS["Gemma"] in note and "republican" in note for note in notes))
         with patch("wordviz.norm_views.emotion_result", side_effect=result):
-            no_data = emotion_view("politics", "Gemma", None, "democrat", "republican", ["Gemma"])
-        self.assertFalse(any(isinstance(c, dcc.Graph) for c in no_data._traverse()))
-        self.assertTrue(any(getattr(c, "role", None) == "status" for c in no_data._traverse()))
+            for mode in ("matrix", "scatter"):
+                no_data = emotion_view("politics", "Gemma", None, "democrat", "republican", ["Gemma"], chart_view=mode)
+                self.assertFalse(any(isinstance(c, dcc.Graph) for c in no_data._traverse()))
+                self.assertTrue(any(getattr(c, "role", None) == "status" for c in no_data._traverse()))
 
     def test_cell_details_and_tables_include_uncertainty_and_counts(self):
         valence = valence_view("religion", None, None, ["Gemma"])
