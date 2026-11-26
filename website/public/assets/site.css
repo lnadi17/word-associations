@@ -125,6 +125,7 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
 .norm-scale { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 14px 0 12px; color: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; }
 .norm-chart-selector { margin: 0; padding: 0; border: 0; }
 .norm-chart-selector legend { padding: 0; }
+.norm-hover-chart, [role="region"]:has(.norm-hover-chart) { -webkit-tap-highlight-color: transparent; }
 #norm-tooltip {
   position: fixed; z-index: 150; pointer-events: none;
   width: max-content; max-width: min(285px, calc(100vw - 16px)); padding: 8px 12px;
