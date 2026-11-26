@@ -143,6 +143,36 @@ def choose(page, control, option):
     dropdown.locator(".Select-menu-outer").get_by_text(option, exact=True).click()
 
 
+def check_pair_directions(page, titles, primes):
+    headings = page.locator("#effect-results h3")
+    expect(headings).to_have_text(titles)
+    for i, heading in enumerate(headings.all()):
+        panel = heading.locator("..")
+        expect(panel).to_contain_text(f"Positive bars mean stronger activation from “{primes[i]}”.")
+        expect(panel).to_contain_text(f"Negative bars mean stronger activation from “{primes[1 - i]}”.")
+        assert heading.evaluate("el => el.scrollWidth <= el.clientWidth + 1")
+
+
+def check_paired_religion(page):
+    titles = ["Target words associated with Christians", "Target words associated with Muslims"]
+    primes = ["christian", "muslim"]
+    check_pair_directions(page, titles, primes)
+    expect(page.locator("#bias-targets-0-label")).to_have_text("Target words for Christians (expected prime “christian”)")
+    expect(page.locator("#bias-targets-1-label")).to_have_text("Target words for Muslims (expected prime “muslim”)")
+    panel = page.locator("#effect-results h3").first.locator("..")
+    matched = panel.locator("details").first
+    matched.locator("summary").click()
+    expect(matched).to_contain_text(re.compile(r"\bfaithful\b"))
+    expect(matched).not_to_contain_text(re.compile(r"\bjudgmental\b"))
+    page.locator("#bias-targets-0 .Select-value").filter(has_text="faithful").locator(".Select-value-icon").click()
+    check_pair_directions(page, ["Selected target words for Christians", titles[1]], primes)
+    page.locator("#target-reset").click()
+    check_pair_directions(page, titles, primes)
+    choose(page, "target-preset", re.compile("Christians vs. Atheists"))
+    check_pair_directions(page, [titles[0], "Target words associated with Atheists"], ["christian", "atheist"])
+    check_width(page)
+
+
 def check_religion_targets(page, methods):
     targets = page.locator("#bias-targets-0")
     chips = targets.locator(".Select-value-label")
@@ -245,6 +275,7 @@ def check_page(page, url):
     expect(page.locator("#effect-results table tbody tr")).to_have_count(2 * len(MATRIX_MODELS))
     for chart in page.locator("#effect-results .dash-graph").all():
         expect(chart.locator(".ytick")).to_have_count(len(MATRIX_MODELS))
+    check_paired_religion(page)
     choose(page, "target-preset", "Perceived religiousness")
     choose(page, "effect-left", "christian")
     choose(page, "effect-right", "muslim")
@@ -366,7 +397,8 @@ def check_custom_domain(page, methods):
     page.locator("#custom-primes").fill("young, old")
     rows = page.locator("#custom-list-rows")
     page.locator("#custom-add-list").click()
-    rows.get_by_label("Word-list name").fill("Experience")
+    experience = "IntergenerationalLearningAndProfessionalExperience"
+    rows.get_by_label("Word-list name").fill(experience)
     rows.get_by_label("Target words").fill("wise, capable")
     rows.get_by_label("Expected prime (optional)").fill("young")
     page.locator("#custom-add-list").click()
@@ -380,6 +412,7 @@ def check_custom_domain(page, methods):
     expect(page.locator("#effect-results .dash-graph")).to_have_count(2)
     expect(page.locator("#effect-results table tbody tr")).to_have_count(2 * len(MATRIX_MODELS))
     expect(page.locator("#effect-results")).to_contain_text("2/2 targets")
+    check_pair_directions(page, [f"Target words in “{experience}”", "Target words in “Energy”"], ["young", "old"])
     choose(page, "target-preset", "Energy")
     expect(page.locator("#effect-results")).to_contain_text("2/2 targets")
     methods.get_by_text("Heatmaps", exact=True).click()

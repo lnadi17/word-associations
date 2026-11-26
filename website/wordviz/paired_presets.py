@@ -29,7 +29,8 @@ def templates():
 def _as_preset(study):
     return {"primes": study.primes, "labels": study.labels, "groups": study.targets,
             "citation": study.citation, "url": study.url, "context": study.context,
-            "data_url": study.data_url, "evidence_url": study.evidence_url}
+            "data_url": study.data_url, "evidence_url": study.evidence_url,
+            "survey_nominations": study.survey_nominations}
 
 
 def paired_presets(domain):
@@ -61,6 +62,8 @@ def paired_presets(domain):
                 context = "Edited target sets. Starting study: " + context
             entry.update(citation=source.citation, url=source.url, data_url=source.data_url,
                          evidence_url=source.evidence_url, context=context)
+            source_labels = tuple(source.labels[source.primes.index(p)] for p in (left, right))
+            entry["survey_nominations"] = source.survey_nominations and exact and (first, second) == source_labels
         options[title] = entry
     for designs in study_catalog().values():
         for title, study in designs.items():
@@ -73,7 +76,7 @@ def paired_presets(domain):
         left, right = domain["primes"][:2]
         options["Enter two target sets"] = {
             "primes": (left, right), "labels": (f"Targets for {left}", f"Targets for {right}"),
-            "groups": ((), ()), "citation": "", "url": "", "data_url": "",
+            "groups": ((), ()), "manual_targets": True, "citation": "", "url": "", "data_url": "",
             "context": "No paired study in this catalog matches these primes. Enter the targets you expect "
                        "each prime to activate more strongly. To save lists or change their expected primes, "
                        "choose Edit under Social domain.",

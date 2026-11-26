@@ -7,10 +7,34 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "website"))
 
 from wordviz.experiment_data import MODELS, contrast_signed_rank
-from wordviz.experiments import holm_adjust, paired_effect, selection_problem
+from wordviz.experiments import holm_adjust, paired_effect, selection_problem, target_set_label
+from wordviz.paired_presets import paired_presets
 
 
 class PairedStudyEffects(unittest.TestCase):
+    def test_survey_labels_follow_target_provenance_and_prime_assignment(self):
+        title, preset = next(iter(paired_presets("religion").items()))
+        christians, muslims = preset["groups"]
+        self.assertEqual(target_set_label(preset, 0, list(reversed(christians))),
+                         "Target words associated with Christians")
+        self.assertEqual(target_set_label(preset, 1, muslims[1:]), "Selected target words for Muslims")
+
+        domain = {
+            "study_template": f"religion/{title}", "primes": ["christian", "muslim"],
+            "lists": {"Muslims": list(muslims), "Christians": list(christians)},
+            "list_primes": {"Muslims": "muslim", "Christians": "christian"},
+        }
+        swapped = next(iter(paired_presets(domain).values()))
+        self.assertEqual(target_set_label(swapped, 0, muslims), "Target words associated with Muslims")
+        self.assertEqual(swapped["primes"][0], "muslim")
+        domain["lists"]["Muslims"] = ["ocean", "lake"]
+        edited = next(iter(paired_presets(domain).values()))
+        self.assertFalse(edited["survey_nominations"])
+        self.assertEqual(target_set_label(edited, 0, ["ocean", "lake"]), "Target words in “Muslims”")
+
+        manual = next(iter(paired_presets({"primes": ["dog", "cat"], "lists": {}}).values()))
+        self.assertEqual(target_set_label(manual, 1, ["kitten"]), "Second target list")
+
     def test_exact_direction_with_ties_zeros_and_sign_reversal(self):
         # Mean ranks for the nonzero absolute differences are 1.5, 1.5, 3.
         # Two of the eight permutations have rank sum >= 4.5, plus sum 6.

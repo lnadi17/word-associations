@@ -220,6 +220,19 @@ def named_choice(domain, value):
     return None, value.removeprefix("list/") if isinstance(value, str) else None
 
 
+def target_set_label(pair, side, words=None):
+    label = pair["labels"][side]
+    if pair.get("manual_targets"):
+        return ("First target list", "Second target list")[side]
+    if not pair.get("survey_nominations"):
+        return f"Target words in “{label}”"
+    if words is None:
+        return f"Target words for {label}"
+    if set(words) == set(pair["groups"][side]):
+        return f"Target words associated with {label}"
+    return f"Selected target words for {label}"
+
+
 def prime_controls(method, domain):
     primes = initial_primes(domain)
     scope = key_for(domain)
@@ -244,7 +257,7 @@ def study_target_editor(domain, name, method, session_targets):
     pair, list_name = named_choice(domain, name)
     persistence = f"{key_for(domain)}/{name}"
     if pair:
-        primes, labels, groups = pair["primes"], pair["labels"], pair["groups"]
+        primes, groups = pair["primes"], pair["groups"]
         saved = session_targets.get(persistence) if isinstance(session_targets, dict) else None
         if isinstance(saved, list) and len(saved) == 2 and all(
                 isinstance(group, list) and all(isinstance(w, str) for w in group) for group in saved):
@@ -260,8 +273,8 @@ def study_target_editor(domain, name, method, session_targets):
         controls = [
             dcc.Store(id="paired-targets", data=name),
             dcc.Store(id="temporary-target-key", data={"pair": persistence}),
-            html.Div([target_field(f"{label} · prime {prime}", words, i, False)
-                      for i, (label, prime, words) in enumerate(zip(labels, primes, groups))],
+            html.Div([target_field(f"{target_set_label(pair, i)} (expected prime “{prime}”)", words, i, False)
+                      for i, (prime, words) in enumerate(zip(primes, groups))],
                      className="controls"),
         ]
     else:
@@ -373,13 +386,13 @@ def model_bars(group, cohort, models, effects, marks, detail):
     )
 
 
-def effect_panels(labels, charts):
+def effect_panels(headings, charts):
     has_negative = any(v is not None and v < 0 for fig in charts for v in fig.data[0].x)
     for fig in charts:
         fig.update_xaxes(range=[-1.1 if has_negative else 0, 1.1])
     return html.Div([
-        html.Div([html.H3(label), graph(fig)], style={"minWidth": 0})
-        for label, fig in zip(labels, charts)
+        html.Div([heading, graph(fig)], style={"minWidth": 0})
+        for heading, fig in zip(headings, charts)
     ], style={"display": "grid", "gap": "16px",
               "gridTemplateColumns": "repeat(auto-fit, minmax(min(100%, 335px), 1fr))"})
 
@@ -412,7 +425,7 @@ def gender_effect(models, groups, values, pairs, canonical):
             details.append([len(differences), format_p(p)])
             rows.append([MODELS[m], group, len(differences), "—" if effect is None else f"{effect:.3f}", format_p(p)])
         charts.append(model_bars(group, cohort, models, effects, annotations, details))
-    panels = effect_panels(GROUPS, charts)
+    panels = effect_panels([html.H3(group) for group in GROUPS], charts)
     scope = ("Published gender word sets" if canonical else "Exploratory word sets") + (
         f" · common targets across {len(eligible)} eligible networks.")
     interpretation = (
@@ -587,10 +600,23 @@ def paired_effect(pair, groups, info, values, models):
     primes = pair["primes"]
     cohort = list(info)
     eligible = [m for m in cohort if not info[m]["missing_primes"]]
-    rows, notes = [], []
-    for i, (label, words) in enumerate(zip(pair["labels"], groups)):
+    labels = [target_set_label(pair, i, words) for i, words in enumerate(groups)]
+    rows, notes, headings = [], [], []
+    example = None
+    for i, (label, words) in enumerate(zip(labels, groups)):
         preferred, other = primes[i], primes[1 - i]
         matched = [w for w in words if eligible and all(w in values[m] for m in eligible)]
+        if matched and example is None:
+            example = matched[0]
+        headings.append(html.Header([
+            html.H3(label),
+            html.P(f"Positive bars mean stronger activation from “{preferred}”. "
+                   f"Negative bars mean stronger activation from “{other}”."),
+            html.Details([
+                html.Summary(f"Show matched target words ({len(matched)})"),
+                html.P(", ".join(matched)),
+            ]) if matched else html.P("No matched target words.", role="status"),
+        ], className="priming-panel-heading"))
         excluded = [w for w in words if w not in matched]
         coverage = f"{label} · {len(matched)}/{len(words)} targets shared across {len(eligible)} eligible networks."
         if excluded:
@@ -607,7 +633,7 @@ def paired_effect(pair, groups, info, values, models):
                              nonzero=nonzero, effect=effect, p=p, method=method, adjusted=None))
     holm_adjust(rows)
     charts = []
-    for i, label in enumerate(pair["labels"]):
+    for i, label in enumerate(labels):
         group_rows = rows[i * len(cohort):(i + 1) * len(cohort)]
         all_tied = [MODELS[r["model"]] for r in group_rows if r["count"] and not r["nonzero"]]
         if all_tied:
@@ -620,20 +646,22 @@ def paired_effect(pair, groups, info, values, models):
               "—" if r["effect"] is None else f'{r["effect"]:+.3f}', format_p(r["p"]),
               format_p(r["adjusted"]), r["method"]] for r in rows]
     missing = [f"{MODELS[m]} ({', '.join(info[m]['missing_primes'])})" for m in cohort if m not in eligible]
-    labels = [f"{label} · {prime}" for label, prime in zip(pair["labels"], primes)]
+    intro = (f"The starting words (primes) are “{primes[0]}” and “{primes[1]}”. "
+             "Both are tested on every matched target word. ")
+    if pair.get("survey_nominations"):
+        intro += "The original target lists group words that survey respondents associated more often with one group than with the other. "
+    if example is not None:
+        intro += f"For example, the network measures how much activation reaches “{example}” from each prime. "
+    intro += "Each bar summarizes those differences across one target set in one network."
     return [
-        html.P(f"For the {pair['labels'][0]} list, each word’s difference is activation from "
-               f"{primes[0]} minus activation from {primes[1]}. The order reverses for the "
-               f"{pair['labels'][1]} list. A positive effect favors that list’s expected prime. "
-               "The network selectors highlight bars in both panels."),
-        effect_panels(labels, charts),
+        html.P(intro), effect_panels(headings, charts),
         html.P("An asterisk marks a one-sided Wilcoxon test with Holm-adjusted p < .05. "
                "Each test compares the two primes within target words for one network.",
                className="source-note"),
         *([html.P("Networks missing a prime: " + ", ".join(missing) + ".", role="status")] if missing else []),
         html.Ul(notes),
         html.Details([html.Summary("Test statistics"), result_table(
-            ["Network", "Target set", "Expected prime", "Matched targets", "Nonzero differences",
+            ["Network", "Target set", "Prime favored by a positive bar", "Matched targets", "Nonzero differences",
              "Effect", "One-sided p", "Holm p", "P-value method"], table, [MODELS[m] for m in models],
             label="Paired priming tests across networks"),
             html.P(f"Each eligible network uses the same matched words within a set. The test omits zero "
@@ -707,7 +735,7 @@ def render_heatmaps(domain, a, b, first, second, selected_primes, paired_name=No
     info = None
     if pair:
         info, values = paired_data(primes, groups, models)
-        labels = pair["labels"]
+        labels = [target_set_label(pair, i, words) for i, words in enumerate(groups)]
     else:
         values = domain_values(domain, [w for words in groups for w in words], models)
         labels = GROUPS if domain == "gender" else ["Target words"]

@@ -13,3 +13,4 @@ class PairedStudy:
     context: str
     data_url: str = ""
     evidence_url: str = ""
+    survey_nominations: bool = False

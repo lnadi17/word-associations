@@ -49,7 +49,7 @@ Priming effects and Heatmaps share the chosen design and target edits during a v
 | Sexual orientation | Experiment 2 nominations for men and women analyzed separately. The source distinguishes target gender, while the graph nodes encode only orientation. [Primary study](https://doi.org/10.1177/19485506231183467) |
 | US political party | Descriptors of Democratic and Republican supporters with the same direction of association in both the 2016 and 2021 surveys. These include traits, issues and party symbols. [Primary study](https://doi.org/10.1017/psrm.2023.30) |
 
-Every survey-based design links to its source data and a downloadable CSV of target ranks, nomination counts and denominators. The CSV documents the original survey-derived words when a user edits a target set. The older single-list contrasts are also available. They use a two-sided test over one set of words and the selected networks. Their sources are listed below.
+Every survey-based design links to its source data and a downloadable CSV of target ranks, nomination counts and denominators. The CSV documents the original survey-derived words when a user edits a target set. In Priming effects, expand **Show matched target words** under either heading to see the exact words contributing to that panel's bars for the current selection of networks. The older single-list contrasts are also available. They use a two-sided test over one set of words and the selected networks. Their sources are listed below.
 
 | Domain | Target-word presets and sources |
 |---|---|

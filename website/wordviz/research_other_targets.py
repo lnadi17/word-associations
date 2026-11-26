@@ -16,6 +16,7 @@ def _orientation(first, second, primes, nominations, first_words, second_words):
         url="https://doi.org/10.1177/19485506231183467",
         data_url="https://osf.io/download/c3sv2/?version=1",
         evidence_url="/assets/evidence/orientation-targets.csv",
+        survey_nominations=True,
         context=(
             f"US participants named stereotypes they believed society associated with each group ({counts}). "
             "This explorer ranks each term by the difference in its share of all coded nominations for the two "
@@ -105,6 +106,7 @@ STUDIES = {
             url="https://doi.org/10.1017/psrm.2023.30",
             data_url="https://dataverse.harvard.edu/api/access/datafile/7234329",
             evidence_url="/assets/evidence/party-targets.csv",
+            survey_nominations=True,
             context=(
                 "US respondents listed descriptors for supporters of each party. This adaptation uses the "
                 "596 respondents in the 2016 file and 1,342 in the 2021 file who gave usable responses to both "

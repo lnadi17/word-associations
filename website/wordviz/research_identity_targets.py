@@ -40,6 +40,7 @@ def _study(primes, labels, targets, sample, religion=False):
         url="https://www.nicolaslab.org/files/SSCM.pdf",
         data_url="https://osf.io/74rax/",
         evidence_url="/assets/evidence/identity-targets.csv",
+        survey_nominations=True,
         context=context,
     )
 
