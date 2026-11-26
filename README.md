@@ -1,6 +1,6 @@
 # word-associations
 
-Explore word associations across ten networks and compare lexical decision and social priming across six on the [live research website](https://word-associations.vercel.app/). The [implicit associations page](https://word-associations.vercel.app/implicit-bias) covers gender, religion, ethnicity, sexual orientation and US political party. The [website guide](website/README.md) explains the datasets and how to run the app locally.
+Explore word associations and compare lexical decision results across human and language-model networks on the [live research website](https://word-associations.vercel.app/). Priming effects, word valence and emotion word sets include all available networks by default. Use **Networks shown** to compare families or individual models on the [implicit associations page](https://word-associations.vercel.app/implicit-bias). The [website guide](website/README.md) describes the social domains, datasets and local setup.
 
 ## TODO
 - [x] Add LWOW dataset
