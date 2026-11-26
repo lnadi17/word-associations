@@ -22,7 +22,7 @@ Word valence uses all words in the graph with an NRC valence rating. Emotion wor
 
 Priming effects, Word valence and Emotion word sets initially include all available networks. Open **Networks shown** to select whole families or individual builds. Those choices carry across the three views and are saved in this browser. **Highlight network** and **Second highlight** emphasize included networks in the plots and tables. Priming effects recomputes common target coverage for the included eligible networks. Each network’s valence and emotion estimates use its own covered vocabulary.
 
-In **Word valence** and **Emotion word sets**, choose **Table** or **Scatter plot**. The table shows networks in rows and primes or emotions in columns, with colors centered at zero. The scatter plot shows the same estimates as points, with 95% confidence intervals for valence slopes. Hover or tap a cell or point for its statistics. Each tab remembers its own visualization choice during your visit.
+In **Word valence** and **Emotion word sets**, choose **Table** or **Scatter plot**. The table shows networks in rows and primes or emotions in columns, with colors centered at zero. The scatter plot shows the same estimates as points, with 95% confidence intervals for valence slopes. Hover or tap a result to see the network, the direction of the association, and its summary statistics. The detailed statistics below the chart give more precise values. Each tab remembers its own visualization choice during your visit.
 
 ## Vercel deployment
 

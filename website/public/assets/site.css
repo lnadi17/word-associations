@@ -125,6 +125,20 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
 .norm-scale { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 14px 0 12px; color: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; }
 .norm-chart-selector { margin: 0; padding: 0; border: 0; }
 .norm-chart-selector legend { padding: 0; }
+#norm-tooltip {
+  position: fixed; z-index: 150; pointer-events: none;
+  width: max-content; max-width: min(285px, calc(100vw - 16px)); padding: 8px 12px;
+  background: rgb(253 255 253 / 86%); color: var(--ink); border: 1px solid rgb(86 113 103 / 55%);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  border-radius: 7px; box-shadow: 0 2px 8px rgb(24 51 47 / 12%);
+  font: 13px/1.35 var(--sans); font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+.norm-tooltip-network { display: block; font-size: 13px; }
+.norm-tooltip-category, .norm-tooltip-detail { color: #405850; font-size: 12px; }
+.norm-tooltip-summary { margin: 4px 0; font-weight: 550; }
+@media (forced-colors: active) {
+  #norm-tooltip { background: Canvas; color: CanvasText; border-color: CanvasText; }
+}
 .norm-scale strong { margin-right: 5px; }
 .norm-scale .norm-download { margin-left: auto; min-height: 30px; padding: 4px 9px; font-size: 12px; }
 .norm-scale-ramp { position: relative; display: grid; place-items: center; width: 86px; height: 17px; background: var(--norm-gradient); border-radius: 3px; }

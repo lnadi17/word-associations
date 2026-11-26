@@ -22,6 +22,9 @@ class BiasNormsTests(unittest.TestCase):
         chart, = [child for child in view._traverse() if isinstance(child, dcc.Graph)]
         self.assertTrue(chart.figure.data)
         self.assertTrue(all(trace.type == "scatter" and trace.mode == "markers" for trace in chart.figure.data))
+        for trace in chart.figure.data:
+            self.assertEqual(trace.hoverinfo, "none")
+            self.assertIsNone(trace.hovertemplate)
         return {trace.name: trace for trace in chart.figure.data}
 
     def heatmap(self, view):
@@ -29,6 +32,8 @@ class BiasNormsTests(unittest.TestCase):
         matrix, = chart.figure.data
         self.assertEqual(matrix.type, "heatmap")
         self.assertIs(chart.figure.layout.dragmode, False)
+        self.assertEqual(matrix.hoverinfo, "none")
+        self.assertIsNone(matrix.hovertemplate)
         return chart.figure, matrix
 
     def test_heatmaps_align_stored_values_and_only_restyle_highlighted_rows(self):
@@ -81,6 +86,9 @@ class BiasNormsTests(unittest.TestCase):
                 categories = [data[0] for data in trace.customdata]
                 self.assertCountEqual(categories, [prime for prime, value in estimates.items() if value is not None])
                 self.assertEqual(list(trace.y), [estimates[prime] for prime in categories])
+                tooltip_row = dict(zip(matrix.x, matrix.customdata[list(matrix.y).index(name)]))
+                for category, tooltip in zip(categories, trace.customdata):
+                    self.assertEqual(tooltip, tooltip_row[category])
                 self.assertEqual(list(trace.error_y.array),
                                  [stored[p]["ci_high"] - stored[p]["slope"] for p in categories])
                 self.assertEqual(list(trace.error_y.arrayminus),
@@ -102,9 +110,17 @@ class BiasNormsTests(unittest.TestCase):
         self.assertEqual(list(forward), [name])
         self.assertEqual([item[0] for item in forward[name].customdata], list(matrix.x))
         self.assertEqual(list(forward[name].y), list(matrix.z[0]))
+        self.assertEqual(list(forward[name].customdata), list(matrix.customdata[0]))
         self.assertEqual(backward[name].x, forward[name].x)
         self.assertEqual(list(backward[name].y), [-value for value in forward[name].y])
         self.assertIsNone(forward[name].error_y.array)
+        anger = list(matrix.x).index("anger")
+        for traces in (forward, backward):
+            self.assertIn("democrat", traces[name].customdata[anger][3].lower())
+            self.assertNotIn("republican", traces[name].customdata[anger][3].lower())
+        self.assertIn("+0.22", forward[name].customdata[anger][4])
+        self.assertIn("0.22", backward[name].customdata[anger][4])
+        self.assertNotIn("+", backward[name].customdata[anger][4])
 
     def test_inclusion_controls_figure_tables_and_empty_state(self):
         only = ["Gpt5_mini"]
@@ -138,6 +154,15 @@ class BiasNormsTests(unittest.TestCase):
         self.assertEqual(list(matrix.y), [MATRIX_MODELS["Humans"], MATRIX_MODELS["Gemma"]])
         self.assertEqual(list(matrix.z[0]), [0. if e == "anger" else None for e in EMOTIONS])
         self.assertEqual(list(matrix.z[1]), [None] * len(EMOTIONS))
+        self.assertEqual(list(matrix.customdata[1]), [None] * len(EMOTIONS))
+        for category, tooltip in zip(EMOTIONS, matrix.customdata[0]):
+            if category == "anger":
+                self.assertEqual(tooltip, points[MATRIX_MODELS["Humans"]].customdata[0])
+                self.assertEqual(tooltip[4], "Signed-rank effect 0")
+                self.assertIn("7", tooltip[5])
+                self.assertIn("3 nonzero", tooltip[5])
+            else:
+                self.assertIsNone(tooltip)
         self.assertGreater(matrix.zmax, 0)
         notes = [c.children for c in view._traverse() if isinstance(c, html.Li) and isinstance(c.children, str)]
         self.assertTrue(any(MATRIX_MODELS["Gemma"] in note and "republican" in note for note in notes))
@@ -147,7 +172,7 @@ class BiasNormsTests(unittest.TestCase):
                 self.assertFalse(any(isinstance(c, dcc.Graph) for c in no_data._traverse()))
                 self.assertTrue(any(getattr(c, "role", None) == "status" for c in no_data._traverse()))
 
-    def test_cell_details_and_tables_include_uncertainty_and_counts(self):
+    def test_tooltips_identify_the_network_and_summarize_detailed_statistics(self):
         valence = valence_view("religion", None, None, ["Gemma"])
         emotion = emotion_view("politics", None, None, "democrat", "republican", ["Gpt5_mini"])
         for view, label, expected in [
@@ -159,19 +184,39 @@ class BiasNormsTests(unittest.TestCase):
             with self.subTest(label=label):
                 _, matrix = self.heatmap(view)
                 col = list(matrix.x).index(expected[1])
-                metadata = matrix.customdata[0][col]
+                category, model, category_label, summary, metric, evidence = matrix.customdata[0][col]
+                self.assertEqual((category, model), (expected[1], expected[0]))
+                self.assertIn(category, category_label.lower())
+                self.assertIn("p < 0.001", evidence)
+                self.assertIn(str(expected[2]), evidence)
                 if label == "Valence coefficients and intervals":
-                    self.assertEqual(list(metadata), [expected[2], expected[-1], expected[4], expected[5],
-                                                      f"{float(expected[3]):+.3f}"])
+                    self.assertIn("higher", summary.lower())
+                    self.assertIn("pleasant", summary.lower())
+                    self.assertEqual(metric, "Slope +0.31 · 95% CI [0.28, 0.33]")
                 else:
-                    self.assertEqual([str(item) for item in metadata], ["926", expected[-1], "926",
-                                                                         f"{float(expected[4]):+.3f}"])
-                for index in range(len(metadata)):
-                    self.assertIn(f"customdata[{index}]", matrix.hovertemplate)
+                    for prime in ("democrat", "republican"):
+                        self.assertIn(prime, category_label.lower())
+                    self.assertIn("democrat", summary.lower())
+                    self.assertEqual(metric, "Signed-rank effect +0.22")
+                    self.assertNotIn("nonzero", evidence)
                 table = next(c for c in view._traverse() if getattr(c, "aria-label", None) == label)
                 row = next(c for c in table._traverse() if isinstance(c, html.Tr) and
                            c.children[0].children == expected[0] and c.children[1].children == expected[1])
                 self.assertEqual([cell.children for cell in row.children], expected)
+
+    def test_small_observed_slopes_retain_their_direction_in_tooltips(self):
+        models = ["Gpt5_mini", "kona2_12b"]
+        _, matrix = self.heatmap(valence_view("politics", None, None, models))
+        for model, prime, direction, expected in [
+            ("Gpt5_mini", "republican", "lower", "−0.01 < slope < 0"),
+            ("kona2_12b", "democrat", "higher", "0 < slope < 0.01"),
+        ]:
+            with self.subTest(model=model):
+                row, col = list(matrix.y).index(MATRIX_MODELS[model]), list(matrix.x).index(prime)
+                self.assertTrue(0 < abs(matrix.z[row][col]) < .005)
+                _, _, _, summary, metric, _ = matrix.customdata[row][col]
+                self.assertIn(direction, summary.lower())
+                self.assertEqual(metric.split(" · ", 1)[0], expected)
 
     def test_valence_color_scale_extends_for_large_slopes(self):
         result = {"available_primes": ["christian"], "joint": None, "rows": [{

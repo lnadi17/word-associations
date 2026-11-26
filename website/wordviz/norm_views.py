@@ -52,7 +52,66 @@ def number(value):
 CONTEXT = "#849491"
 
 
-def scatter_chart(results, categories, category_key, category_title, value_key, value_title, a, b):
+def tooltip_p(p):
+    if p is None:
+        return "p unavailable"
+    for cutoff in (.001, .01, .05):
+        if p < cutoff:
+            return f"p < {cutoff}"
+    return f"p = {p:.2f}"
+
+
+def tooltip_estimate(label, value):
+    if 0 < abs(value) < .005:
+        if value > 0:
+            return f"0 < {label.lower()} < 0.01"
+        return f"−0.01 < {label.lower()} < 0"
+    if value == 0:
+        return f"{label} 0"
+    estimate = f"{value:+.2f}".replace("-", "−")
+    return f"{label} {estimate}"
+
+
+def interval_endpoint(value):
+    if value == 0:
+        return "0"
+    if abs(value) < .005:
+        return "just above 0" if value > 0 else "just below 0"
+    return f"{value:.2f}".replace("-", "−")
+
+
+def norm_tooltip(model, row, value_key, prime_pair):
+    if not row or row[value_key] is None:
+        return None
+    value = row[value_key]
+    if value_key == "slope":
+        category = row["prime"]
+        heading = f"Prime · {category}"
+        summary = "No linear trend in pleasantness."
+        if value:
+            direction = "higher" if value > 0 else "lower"
+            summary = f"Stronger activation goes with {direction} pleasantness."
+        metric = tooltip_estimate("Slope", value)
+        if row["ci_low"] is not None and row["ci_high"] is not None:
+            bounds = [interval_endpoint(row[key]) for key in ("ci_low", "ci_high")]
+            metric += f" · 95% CI [{', '.join(bounds)}]"
+        count = f"{row['n']:,} rated words"
+    else:
+        category = row["emotion"]
+        first, second = prime_pair
+        heading = f"{category.title()} · {first} vs {second}"
+        summary = "Neither prime leads overall."
+        if value:
+            favored = first if value > 0 else second
+            summary = f"Stronger activation from “{favored}”."
+        metric = tooltip_estimate("Signed-rank effect", value)
+        count = f"{row['n']:,} matched words"
+        if row["nonzero"] != row["n"]:
+            count += f" ({row['nonzero']:,} nonzero)"
+    return [category, MATRIX_MODELS[model], heading, summary, metric, f"{count} · {tooltip_p(row['p'])}"]
+
+
+def scatter_chart(results, categories, category_key, category_title, value_key, value_title, a, b, prime_pair):
     plotted = {model: [row for row in result["rows"] if row[value_key] is not None]
                for model, result in results.items()}
     plotted = {model: rows for model, rows in plotted.items() if rows}
@@ -71,27 +130,17 @@ def scatter_chart(results, categories, category_key, category_title, value_key, 
         values = [row[value_key] for row in rows]
         color, symbol = colors.get(model, (CONTEXT, "circle"))
         highlighted = model in colors
-        details = [[row[category_key], row["n"], format_p(row["p"])] for row in rows]
         error = None
         if value_key == "slope":
             error = {"type": "data", "symmetric": False, "thickness": 1.6 if highlighted else 1,
                      "width": 3 if highlighted else 1,
                      "array": [r["ci_high"] - r["slope"] if r["ci_high"] is not None else None for r in rows],
                      "arrayminus": [r["slope"] - r["ci_low"] if r["ci_low"] is not None else None for r in rows]}
-            for detail, row in zip(details, rows):
-                detail.extend([number(row["ci_low"]), number(row["ci_high"])])
-            diagnostics = "<br>95% CI [%{customdata[3]}, %{customdata[4]}]"
-        else:
-            for detail, row in zip(details, rows):
-                detail.append(row["nonzero"])
-            diagnostics = "<br>Nonzero pairs %{customdata[3]:,}"
         fig.add_scatter(name=MATRIX_MODELS[model], x=[categories.index(label) + offsets[model] for label in labels],
                         y=values, mode="markers", opacity=1 if highlighted else .78,
                         marker={"size": 10 if highlighted else 5, "color": color, "symbol": symbol},
-                        error_y=error, customdata=details,
-                        hovertemplate=("%{customdata[0]}<br>" + value_title +
-                                       " %{y:+.3f}" + diagnostics +
-                                       "<br>Words %{customdata[1]:,}<br>p %{customdata[2]}<extra>%{fullData.name}</extra>"))
+                        error_y=error, customdata=[norm_tooltip(model, row, value_key, prime_pair) for row in rows],
+                        hoverinfo="none")
     style_figure(fig, 375)
     # Keep touch drags available for horizontal scrolling through the categories.
     fig.update_layout(margin={"l": 50, "r": 15, "t": 16, "b": 40}, showlegend=False, dragmode=False)
@@ -114,7 +163,9 @@ def scatter_chart(results, categories, category_key, category_title, value_key, 
     # At small viewport widths, give dense point groups enough horizontal room
     # to inspect; the page and the legend stay inside the viewport.
     width = 70 + len(categories) * max(22, 4 * len(plotted))
-    plot = html.Div(html.Div(graph(fig), style={"minWidth": f"{width}px"}),
+    chart = graph(fig)
+    chart.className = "norm-hover-chart"
+    plot = html.Div(html.Div(chart, style={"minWidth": f"{width}px"}),
                     className="table-scroll", tabIndex=0, role="region", **{"aria-label": value_title + " chart"})
     return html.Div([key, plot])
 
@@ -124,24 +175,18 @@ MATRIX_COLORS = ["#cb8e65", "#ead2bc", "#faf9f5", "#bedbe1", "#639caf"]
 
 
 def norm_chart(results, categories, category_key, category_title, value_key, value_title, a, b,
-               export_title, chart_view="matrix"):
+               export_title, chart_view="matrix", prime_pair=None):
     if chart_view == "scatter":
-        return scatter_chart(results, categories, category_key, category_title, value_key, value_title, a, b)
+        return scatter_chart(results, categories, category_key, category_title, value_key, value_title, a, b, prime_pair)
     valence = value_key == "slope"
     values, details, cell_text = [], [], []
-    for result in results.values():
+    for model, result in results.items():
         indexed = {row[category_key]: row for row in result["rows"]}
         cells = [indexed.get(category, {}) for category in categories]
         estimates = [cell.get(value_key) for cell in cells]
         values.append(estimates)
         cell_text.append(["" if value is None else f"{value:+.2f}" if value else "0.00" for value in estimates])
-        detail_row = []
-        for cell, estimate in zip(cells, estimates):
-            common = [f'{cell["n"]:,}', format_p(cell["p"])] if cell else ["—", "—"]
-            diagnostics = ([number(cell.get("ci_low")), number(cell.get("ci_high"))] if valence
-                           else [cell.get("nonzero", "—")])
-            detail_row.append([*common, *diagnostics, "—" if estimate is None else f"{estimate:+.3f}"])
-        details.append(detail_row)
+        details.append([norm_tooltip(model, cell, value_key, prime_pair) for cell in cells])
 
     finite = [value for row in values for value in row if value is not None]
     if not finite:
@@ -149,18 +194,12 @@ def norm_chart(results, categories, category_key, category_title, value_key, val
     # The signed-rank effect is bounded by one. Slopes have no theoretical bound.
     # 1.5 covers the five published domains. Extend in half units for larger custom slopes.
     limit = max(1.5, ceil(max(map(abs, finite)) * 2) / 2) if valence else 1.0
-    hover_detail = ("<br>95% CI [%{customdata[2]}, %{customdata[3]}]" if valence
-                    else "<br>Nonzero pairs %{customdata[2]}")
     model_names = [MATRIX_MODELS[m] for m in results]
     fig = go.Figure(go.Heatmap(
         x=list(categories), y=model_names, z=values, zmin=-limit, zmax=limit, zmid=0,
         colorscale=MATRIX_COLORS, showscale=False, xgap=1, ygap=1, hoverongaps=False,
         text=cell_text, texttemplate="%{text}", textfont={"size": 12, "color": "#152c31"},
-        customdata=details, hovertemplate=(
-            "<b>%{y}</b><br>" + category_title + " · %{x}<br>" + value_title +
-            (" %{customdata[4]}" if valence else " %{customdata[3]}") +
-            hover_detail + "<br>Words %{customdata[0]}<br>p %{customdata[1]}<extra></extra>"
-        ),
+        customdata=details, hoverinfo="none",
     ))
     highlights = {a: ("primary", ACCENT, "●")}
     if b != a:
@@ -212,6 +251,7 @@ def norm_chart(results, categories, category_key, category_title, value_key, val
         html.Button("Download PNG", id="norm-download", className="norm-download", n_clicks=0),
     ], className="norm-scale")
     chart = graph(fig)
+    chart.className = "norm-hover-chart"
     chart.id = "norm-matrix-plot"
     chart.config = {"displayModeBar": False}
     matrix = html.Div([
@@ -291,7 +331,7 @@ def valence_view(domain, a, b, included=None, chart_view="matrix"):
             joint_rows.append([MATRIX_MODELS[model], f'{joint["n"]:,}', number(joint["statistic"]),
                                joint["df"], format_p(joint["p"]), number(joint["partial_r2"])])
     scope = "Figures 10–11 method" if domain in ("religion", "ethnicity", "orientation") else "Exploratory application"
-    guide = ("Each point is one network’s slope for a prime. Whiskers show its 95% confidence interval."
+    guide = ("Whiskers show 95% confidence intervals. Hover or tap a point for its network and slope."
              if chart_view == "scatter" else
              "Hover or tap a cell for its 95% confidence interval, word count and p-value.")
     return html.Section([
@@ -339,7 +379,7 @@ def emotion_view(domain, a, b, left, right, included=None, chart_view="matrix"):
                f"Negative effects favor {right}. {guide}"),
         *coverage(results, (left, right), "effect"),
         norm_chart(results, EMOTIONS, "emotion", "Emotion word set", "effect", "Signed-rank effect (z/√N)", a, b,
-                   f"{label_for(domain)} · Emotion word sets · {left} versus {right}", chart_view),
+                   f"{label_for(domain)} · Emotion word sets · {left} versus {right}", chart_view, (left, right)),
         html.Details([html.Summary("Paired test statistics"), result_table(
             ["Network", "Emotion", "Matched words", "Nonzero pairs", "Effect", "Two-sided p"], rows,
             selected, label="Emotion word set tests")]),

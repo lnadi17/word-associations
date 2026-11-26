@@ -54,6 +54,63 @@ def check_matrix(results, categories):
     }""")
 
 
+def check_norm_tooltip(page, results, method, scatter=False):
+    plot = results.locator(".js-plotly-plot")
+    # Exercise a real point or cell after scrolling the chart. Prefer a long
+    # build name in the matrix and an unobstructed highlighted marker in scatter.
+    target = plot.evaluate("""(el, scatter) => {
+        const {xaxis, yaxis} = el._fullLayout;
+        const trace = scatter ? el.data.at(-1) : el.data[0];
+        const col = trace.x.length - 1;
+        const row = scatter ? null : trace.y.reduce((best, name, i) =>
+            trace.z[i][col] != null && name.length > (trace.y[best]?.length ?? 0) ? i : best, -1);
+        const x = xaxis._offset + xaxis.l2p(scatter ? trace.x[col] : col);
+        const y = yaxis._offset + yaxis.l2p(scatter ? trace.y[col] : row);
+        const scroller = el.closest('[role=region]');
+        scroller.scrollIntoView({block:'center'});
+        scroller.scrollLeft = Math.max(0, x - scroller.clientWidth + 22);
+        scroller.scrollTop = Math.max(0, y - scroller.clientHeight + 35);
+        const rect = el.getBoundingClientRect();
+        return {x:x + rect.left, y:y + rect.top, model:scatter ? trace.name : trace.y[row],
+                category:scatter ? trace.customdata[col][0] : trace.x[col]};
+    }""", scatter)
+    page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+    touch = page.evaluate("navigator.maxTouchPoints > 0")
+    if touch:
+        page.touchscreen.tap(target["x"], target["y"])
+    else:
+        page.mouse.move(target["x"], target["y"])
+    card = page.get_by_role("tooltip")
+    expect(card.locator(".norm-tooltip-network")).to_have_text(target["model"])
+    expect(card.locator(".norm-tooltip-category")).to_contain_text(re.compile(re.escape(target["category"]), re.I))
+    expect(card.locator(".norm-tooltip-summary")).not_to_be_empty()
+    if method == "emotion":
+        for field in ("emotion-left", "emotion-right"):
+            prime = page.locator(f"#{field} .Select-value-label").inner_text()
+            expect(card).to_contain_text(prime)
+    metric = card.locator(".norm-tooltip-metric").inner_text()
+    estimate = metric.split(" · ")[0]
+    assert re.search(r"\d", estimate) and not re.search(r"\d\.\d{3,}", estimate), metric
+    expect(plot.locator(".hoverlayer .hovertext")).to_have_count(0)
+    assert card.evaluate("""el => {
+        const r = el.getBoundingClientRect(), color = getComputedStyle(el).backgroundColor;
+        return r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight &&
+            color.startsWith('rgba(') && Number(color.slice(5, -1).split(',')[3]) < 1;
+    }""")
+    # Panning the table should clear the details of the cell that just moved.
+    scrolled = not scatter and plot.evaluate("""el => {
+        const region = el.closest('[role=region]'), before = region.scrollTop;
+        region.scrollTop += before > 5 ? -5 : 5;
+        return before !== region.scrollTop;
+    }""")
+    if not scrolled:
+        if touch:
+            page.touchscreen.tap(2, 2)
+        else:
+            page.keyboard.press("Escape")
+    expect(card).to_be_hidden()
+
+
 def check_norm_scatter(page, method):
     results = page.locator(f"#{method}-results")
     switch = page.locator(f"#{method}-chart-view")
@@ -62,6 +119,7 @@ def check_norm_scatter(page, method):
     plot = graph.locator(".js-plotly-plot")
     expect(graph.locator(".heatmaplayer image")).to_be_visible()
     matrix = plot.evaluate("el => { const {x, y, z} = el.data[0]; return {x, y, z}; }")
+    check_norm_tooltip(page, results, method)
     expected = {(model, category): value for model, row in zip(matrix["y"], matrix["z"])
                 for category, value in zip(matrix["x"], row) if value is not None}
     stats = results.locator("table").all_text_contents()
@@ -76,6 +134,7 @@ def check_norm_scatter(page, method):
               for category, value in zip(trace["categories"], trace["values"])}
     assert points == expected
     assert all(trace["hasIntervals"] == (method == "valence") for trace in traces)
+    check_norm_tooltip(page, results, method, scatter=True)
     assert results.locator("table").all_text_contents() == stats
     check_width(page)
 
