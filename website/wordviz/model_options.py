@@ -55,5 +55,5 @@ def model_options(models):
             options.append({"value": value, "label": label, "title": f"Pinned · {origin}",
                             "search": f"{name} {origin} {MODEL_PROVENANCE[key]['identifier']} pinned"})
         else:
-            options.append({"value": value, "label": name})
+            options.append({"value": value, "label": name, "search": name})
     return options

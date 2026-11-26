@@ -26,9 +26,12 @@ class ModelProvenanceTests(unittest.TestCase):
         pins = list(strongest.values())[:5]
         self.assertEqual(list(pinned_models()), pins)
         for models in (GRAPH_MODELS, MATRIX_MODELS):
-            values = [opt["value"] for opt in model_options(models)]
+            options = model_options(models)
+            values = [opt["value"] for opt in options]
             self.assertCountEqual(values, models.keys())
             self.assertEqual([v.lower() for v in values[:1 + len(pins)]], ["humans", *pins])
+            for option in options:
+                self.assertIn(models[option["value"]], option["search"])
 
     def test_served_dataset_labels_and_qualifications(self):
         for key, label in GRAPH_MODELS.items():
