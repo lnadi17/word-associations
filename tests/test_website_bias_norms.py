@@ -11,40 +11,58 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "website"))
 
 from wordviz.bias_norms import EMOTIONS, emotion_result, valence_result
+from wordviz.experiments import format_p
 from wordviz.models import MATRIX_MODELS
-from wordviz.norm_views import ACCENT, CONTEXT, SECONDARY, emotion_view, valence_view
+from wordviz.norm_views import emotion_view, valence_view
 from wordviz.social_domains import DOMAIN_PRIMES
 
 
 class BiasNormsTests(unittest.TestCase):
-    def test_all_networks_plotted_and_highlights_preserve_estimates(self):
-        def by_name(view):
-            graph = next(child for child in view._traverse() if isinstance(child, dcc.Graph))
-            self.assertIs(graph.figure.layout.dragmode, False)
-            return {trace.name: trace for trace in graph.figure.data}
+    def heatmap(self, view):
+        chart, = [c for c in view._traverse() if isinstance(c, dcc.Graph)]
+        matrix, = chart.figure.data
+        self.assertEqual(matrix.type, "heatmap")
+        self.assertIs(chart.figure.layout.dragmode, False)
+        return chart.figure, matrix
 
-        renderers = [lambda a, b: valence_view("religion", a, b),
-                     lambda a, b: emotion_view("politics", a, b, "democrat", "republican")]
-        gpt_label = MATRIX_MODELS["Gpt5_mini"]
-        for render in renderers:
-            original = by_name(render("Humans", "Gpt5_mini"))
-            changed = by_name(render("Gemma", "Humans"))
-            self.assertEqual(set(original), set(MATRIX_MODELS.values()))
-            for name, trace in original.items():
-                self.assertEqual((trace.x, trace.y), (changed[name].x, changed[name].y))
-            self.assertEqual(original["Humans"].marker.color, ACCENT)
-            self.assertEqual(original[gpt_label].marker.symbol, "diamond")
-            self.assertEqual(changed["Humans"].marker.color, SECONDARY)
-            self.assertEqual(changed[gpt_label].marker.color, CONTEXT)
+    def test_heatmaps_align_stored_values_and_only_restyle_highlighted_rows(self):
+        def valence(a, b):
+            return valence_view("politics", a, b)
+
+        def emotion(a, b):
+            return emotion_view("politics", a, b, "democrat", "republican")
+
+        cases = [
+            (valence, DOMAIN_PRIMES["politics"], "prime", "slope", lambda m: valence_result("politics", m)),
+            (emotion, EMOTIONS, "emotion", "effect", lambda m: emotion_result("politics", m, "democrat", "republican")),
+        ]
+        for render, columns, category, measure, stored in cases:
+            with self.subTest(measure=measure):
+                original, matrix = self.heatmap(render("Humans", "Gpt5_mini"))
+                changed, restyled = self.heatmap(render("Gemma", "Humans"))
+                self.assertEqual(list(matrix.x), list(columns))
+                self.assertEqual(list(matrix.y), list(MATRIX_MODELS.values()))
+                for model, plotted in zip(MATRIX_MODELS, matrix.z):
+                    estimates = {row[category]: row[measure] for row in stored(model)["rows"]}
+                    self.assertEqual(list(plotted), [estimates.get(column) for column in columns])
+                self.assertGreater(matrix.zmax, 0)
+                self.assertEqual(matrix.zmin, -matrix.zmax)
+                self.assertGreaterEqual(matrix.zmax, max(abs(v) for row in matrix.z for v in row if v is not None))
+                self.assertEqual((matrix.x, matrix.y, matrix.z, matrix.zmin, matrix.zmax),
+                                 (restyled.x, restyled.y, restyled.z, restyled.zmin, restyled.zmax))
+                changed_labels = [model for model, before, after in zip(
+                    MATRIX_MODELS, original.layout.yaxis.ticktext, changed.layout.yaxis.ticktext
+                ) if before != after]
+                self.assertCountEqual(changed_labels, ["Humans", "Gpt5_mini", "Gemma"])
 
     def test_inclusion_controls_figure_tables_and_empty_state(self):
         only = ["Gpt5_mini"]
         views = [valence_view("religion", "Humans", "Gpt5_mini", only),
                  emotion_view("politics", "Humans", "Gpt5_mini", "democrat", "republican", only)]
         for view in views:
-            graph = next(c for c in view._traverse() if isinstance(c, dcc.Graph))
-            self.assertEqual([trace.name for trace in graph.figure.data], [MATRIX_MODELS["Gpt5_mini"]])
-            self.assertEqual(graph.figure.data[0].marker.color, SECONDARY)
+            _, matrix = self.heatmap(view)
+            self.assertEqual(list(matrix.y), [MATRIX_MODELS["Gpt5_mini"]])
+            self.assertEqual(len(matrix.z), 1)
             bodies = [c for c in view._traverse() if isinstance(c, html.Tbody)]
             self.assertTrue(all(row.className == "selected-row" for tb in bodies for row in tb.children))
         with patch("wordviz.norm_views.valence_result") as compute:
@@ -52,18 +70,60 @@ class BiasNormsTests(unittest.TestCase):
             self.assertEqual(empty.role, "status")
             compute.assert_not_called()
 
-    def test_unavailable_networks_keep_coverage_and_never_plot_zero(self):
+    def test_unavailable_networks_have_empty_cells_distinct_from_zero(self):
         def result(domain, model, left, right):
             if model == "Gemma":
                 return {"available_primes": [left], "rows": [], "reason": "Prime missing"}
             return {"available_primes": [left, right], "rows": [
                 {"emotion": "anger", "effect": 0., "n": 7, "nonzero": 3, "p": 1.}]}
         with patch("wordviz.norm_views.emotion_result", side_effect=result):
-            panel = emotion_view("politics", "Gemma", "Gemma", "democrat", "republican", ["Gemma", "Humans"])
-        graph = next(c for c in panel._traverse() if isinstance(c, dcc.Graph))
-        self.assertEqual([(t.name, t.y, t.marker.color) for t in graph.figure.data], [("Humans", (0.,), CONTEXT)])
-        notes = [c.children for c in panel._traverse() if isinstance(c, html.Li) and isinstance(c.children, str)]
+            view = emotion_view("politics", "Gemma", "Gemma", "democrat", "republican", ["Gemma", "Humans"])
+        _, matrix = self.heatmap(view)
+        self.assertEqual(list(matrix.y), [MATRIX_MODELS["Humans"], MATRIX_MODELS["Gemma"]])
+        self.assertEqual(list(matrix.z[0]), [0. if e == "anger" else None for e in EMOTIONS])
+        self.assertEqual(list(matrix.z[1]), [None] * len(EMOTIONS))
+        self.assertGreater(matrix.zmax, 0)
+        notes = [c.children for c in view._traverse() if isinstance(c, html.Li) and isinstance(c.children, str)]
         self.assertTrue(any(MATRIX_MODELS["Gemma"] in note and "republican" in note for note in notes))
+        with patch("wordviz.norm_views.emotion_result", side_effect=result):
+            no_data = emotion_view("politics", "Gemma", None, "democrat", "republican", ["Gemma"])
+        self.assertFalse(any(isinstance(c, dcc.Graph) for c in no_data._traverse()))
+        self.assertTrue(any(getattr(c, "role", None) == "status" for c in no_data._traverse()))
+
+    def test_cell_details_and_tables_include_uncertainty_and_counts(self):
+        valence = valence_view("religion", None, None, ["Gemma"])
+        emotion = emotion_view("politics", None, None, "democrat", "republican", ["Gpt5_mini"])
+        for view, label, expected in [
+            (valence, "Valence coefficients and intervals",
+             [MATRIX_MODELS["Gemma"], "christian", "10,855", "0.307", "0.282", "0.332", format_p(1.43706483969860e-124)]),
+            (emotion, "Emotion word set tests",
+             [MATRIX_MODELS["Gpt5_mini"], "anger", 926, 926, "0.221", format_p(1.602452253268919e-11)]),
+        ]:
+            with self.subTest(label=label):
+                _, matrix = self.heatmap(view)
+                col = list(matrix.x).index(expected[1])
+                metadata = matrix.customdata[0][col]
+                if label == "Valence coefficients and intervals":
+                    self.assertEqual(list(metadata), [expected[2], expected[-1], expected[4], expected[5],
+                                                      f"{float(expected[3]):+.3f}"])
+                else:
+                    self.assertEqual([str(item) for item in metadata], ["926", expected[-1], "926",
+                                                                         f"{float(expected[4]):+.3f}"])
+                for index in range(len(metadata)):
+                    self.assertIn(f"customdata[{index}]", matrix.hovertemplate)
+                table = next(c for c in view._traverse() if getattr(c, "aria-label", None) == label)
+                row = next(c for c in table._traverse() if isinstance(c, html.Tr) and
+                           c.children[0].children == expected[0] and c.children[1].children == expected[1])
+                self.assertEqual([cell.children for cell in row.children], expected)
+
+    def test_valence_color_scale_extends_for_large_slopes(self):
+        result = {"available_primes": ["christian"], "joint": None, "rows": [{
+            "prime": "christian", "n": 30, "slope": -2.75, "ci_low": -3.4, "ci_high": -2.1, "p": .003,
+        }]}
+        with patch("wordviz.norm_views.valence_result", return_value=result):
+            _, matrix = self.heatmap(valence_view("religion", None, None, ["Humans"]))
+        self.assertLessEqual(matrix.zmin, -2.75)
+        self.assertEqual(-matrix.zmin, matrix.zmax)
 
     def test_all_domain_models_have_valence_and_emotion_coverage(self):
         for domain, primes in DOMAIN_PRIMES.items():
