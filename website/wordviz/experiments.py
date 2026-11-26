@@ -20,6 +20,7 @@ from .paired_presets import paired_presets
 from .target_presets import TARGET_PRESETS
 from .model_options import model_options
 from .model_inclusion import included_models
+from .models import model_sort_key, ordered_model_keys
 
 ACCENT = "#17735f"
 SECONDARY = "#bf6b36"
@@ -64,7 +65,8 @@ def model_axis(figure, models):
     labels = [MODELS[m] for m in models]
     lines = [wrap(label, width=14, break_long_words=False) for label in labels]
     ticks = ["<br>".join(escape(part) for part in parts) for parts in lines]
-    figure.update_xaxes(type="category", tickmode="array", tickvals=labels, ticktext=ticks, tickangle=0,
+    figure.update_xaxes(type="category", categoryorder="array", categoryarray=labels,
+                        tickmode="array", tickvals=labels, ticktext=ticks, tickangle=0,
                         tickfont={"size": 11}, automargin=False)
     figure.update_layout(margin_b=32 + 16 * max(map(len, lines)), margin_r=12)
 
@@ -122,7 +124,7 @@ def ldt_layout():
 def render_ldt(a, b, target_index):
     if a == b and a in MODELS:
         return html.P("Choose a different comparison network, or clear Compare with.", role="status")
-    models = selected_models(a, b)
+    models = ordered_model_keys(selected_models(a, b))
     if not models:
         return html.P("Choose a network.")
     experiment = metadata("ldt")
@@ -399,7 +401,7 @@ def effect_panels(headings, charts):
 
 def gender_effect(models, groups, values, pairs, canonical):
     # A model contributes when its matrix contains both primes of every selected pair.
-    cohort = list(values)
+    cohort = ordered_model_keys(values)
     required = {prime for pair in pairs for prime in pair}
     available = metadata("provenance")
     eligible = [m for m in cohort if required.issubset(available[m]["gender"].get("primes", metadata("primes")))]
@@ -436,7 +438,8 @@ def gender_effect(models, groups, values, pairs, canonical):
     return [html.P(scope + " " + interpretation + " The selected networks are highlighted."), panels,
             html.P("One-sided Wilcoxon test · * p < .05 · ** p < .01 · *** p < .001", className="source-note"),
             html.Ul(notes), html.Details([html.Summary("Test statistics"),
-            result_table(["Network", "Target group", "Paired observations", "Effect", "One-sided p"], rows,
+            result_table(["Network", "Target group", "Paired observations", "Effect", "One-sided p"],
+                         sorted(rows, key=lambda row: model_sort_key(row[0])),
                          [MODELS[m] for m in models])])]
 
 
@@ -519,6 +522,7 @@ def activation_sources(domain, models, infos=None):
 
 
 def contrast_results(models, targets, left, right, values, highlights=()):
+    models = ordered_model_keys(models)
     shared = [w for w in targets if all(
         all(prime in values[m].get(w, {}) for prime in (left, right)) for m in models
     )]
@@ -598,7 +602,7 @@ def holm_adjust(results):
 
 def paired_effect(pair, groups, info, values, models):
     primes = pair["primes"]
-    cohort = list(info)
+    cohort = ordered_model_keys(info)
     eligible = [m for m in cohort if not info[m]["missing_primes"]]
     labels = [target_set_label(pair, i, words) for i, words in enumerate(groups)]
     rows, notes, headings = [], [], []
@@ -662,7 +666,8 @@ def paired_effect(pair, groups, info, values, models):
         html.Ul(notes),
         html.Details([html.Summary("Test statistics"), result_table(
             ["Network", "Target set", "Prime favored by a positive bar", "Matched targets", "Nonzero differences",
-             "Effect", "One-sided p", "Holm p", "P-value method"], table, [MODELS[m] for m in models],
+             "Effect", "One-sided p", "Holm p", "P-value method"], sorted(table, key=lambda row: model_sort_key(row[0])),
+            [MODELS[m] for m in models],
             label="Paired priming tests across networks"),
             html.P(f"Each eligible network uses the same matched words within a set. The test omits zero "
                    f"differences, averages tied ranks, and uses exact sign "
@@ -731,7 +736,7 @@ def render_heatmaps(domain, a, b, first, second, selected_primes, paired_name=No
         p for p in selected_primes or [] if p in primes_for(domain)))
     if not primes:
         return html.P("Select at least one prime for the heatmap.", className="panel", role="status")
-    models = selected_models(a, b)
+    models = ordered_model_keys(selected_models(a, b))
     info = None
     if pair:
         info, values = paired_data(primes, groups, models)

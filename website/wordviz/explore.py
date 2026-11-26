@@ -10,6 +10,7 @@ from dash import ALL, Input, Output, State, ctx, dcc, html, no_update
 
 from .explore_data import DIRECTIONS, MODELS, StoreUnavailable, neighbors, vocabulary
 from .model_options import model_options
+from .models import model_sort_key
 
 COLORS = ("#167264", "#ad632c", "#5669a0", "#984f66", "#547733", "#91689d", "#8d7129", "#347d99")
 NOTES = {
@@ -66,6 +67,12 @@ def profiles(words, a, b):
     return [(model, word) for word in queries for model in dict.fromkeys((a, b)) if model in MODELS]
 
 
+def _display_order(pairs):
+    # Keep the user's cue order and the original indices used by filters, colors and Δ.
+    cues = list(dict.fromkeys(word for _, word in pairs))
+    return sorted(range(len(pairs)), key=lambda i: (cues.index(pairs[i][1]), model_sort_key(MODELS[pairs[i][0]])))
+
+
 def search_words(search, a, b, selected):
     selected = list(selected or [])
     query = (search or "").strip().casefold()
@@ -88,8 +95,9 @@ def membership_options(words, a, b):
         options.append({"label": "Shared by all", "value": "shared"})
         if len(series) > 2:
             options.append({"label": "Shared by some", "value": "some"})
-        options.extend({"label": f"Only {word} · {MODELS[model]}", "value": f"only-{i}"}
-                       for i, (model, word) in enumerate(series))
+        for i in _display_order(series):
+            model, word = series[i]
+            options.append({"label": f"Only {word} · {MODELS[model]}", "value": f"only-{i}"})
     return options
 
 
@@ -134,8 +142,8 @@ def _cell(result, total, word, ranks):
     return f"{count:,} · {100 * count / total:.1f}%{rank}"
 
 
-def _table(series, totals, words):
-    columns = [html.Th("Word", scope="col")] + [html.Th(s.label, scope="col") for s in series]
+def _table(series, totals, words, display_order):
+    columns = [html.Th("Word", scope="col")] + [html.Th(series[i].label, scope="col") for i in display_order]
     if len(series) == 2:
         columns.append(html.Th("Δ share", scope="col",
                                title=f"{series[1].label} minus {series[0].label}, in percentage points"))
@@ -152,7 +160,7 @@ def _table(series, totals, words):
     rows = []
     for word in words:
         cells = [html.Th(word, scope="row")]
-        cells.extend(html.Td(_cell(s, total, word, r)) for s, total, r in zip(series, totals, ranks))
+        cells.extend(html.Td(_cell(series[i], totals[i], word, ranks[i])) for i in display_order)
         if len(series) == 2:
             delta = "—"
             if all(totals):
@@ -168,9 +176,10 @@ def _table(series, totals, words):
                     **{"aria-label": "Ranked word connections"})
 
 
-def _bars(series, totals, words):
+def _bars(series, totals, words, display_order):
     fig = go.Figure()
-    for index, (s, total) in enumerate(zip(series, totals)):
+    for index in display_order:
+        s, total = series[index], totals[index]
         counts = [s.counts.get(w, 0) for w in words]
         share = [n / total if total else None for n in counts]
         fig.add_bar(name=escape(s.label), y=list(range(len(words))), x=share, orientation="h",
@@ -190,8 +199,8 @@ def _bars(series, totals, words):
                                  autorange="reversed", automargin=True, title=None))
     legend = html.Ul([html.Li([
         html.Span(className="series-swatch", style={"backgroundColor": COLORS[i % len(COLORS)]}),
-        s.label,
-    ]) for i, s in enumerate(series)], className="series-legend", **{"aria-label": "Chart series"})
+        series[i].label,
+    ]) for i in display_order], className="series-legend", **{"aria-label": "Chart series"})
     return html.Div([legend, html.Div(dcc.Graph(
         figure=fig, responsive=True, style={"height": f"{height}px"},
         config={"displaylogo": False, "displayModeBar": False},
@@ -202,7 +211,7 @@ def _node_label(word):
     return word if len(word) <= 13 else word[:12] + "…"
 
 
-def _graphs(series, totals, words, direction):
+def _graphs(series, totals, words, direction, display_order=None):
     # Equal row spacing on each side keeps neighboring labels apart, even at the 30-word limit.
     half = (len(words) + 1) // 2
     positions = {}
@@ -217,7 +226,8 @@ def _graphs(series, totals, words, direction):
     min_height = max(300, 40 + half * 25)
     peak = max((s.counts.get(w, 0) / n for s, n in zip(series, totals) if n for w in words), default=1) or 1
     panels = []
-    for i, (s, total) in enumerate(zip(series, totals)):
+    for panel_index, i in enumerate(range(len(series)) if display_order is None else display_order):
+        s, total = series[i], totals[i]
         active = [w for w in words if w in s.counts]
         color = COLORS[i % len(COLORS)]
         fig = go.Figure()
@@ -246,7 +256,7 @@ def _graphs(series, totals, words, direction):
                           yaxis=dict(visible=False, range=[-1,1]))
         panels.append(html.Div([html.H3([
             html.Span(className="series-swatch", style={"backgroundColor": color}), s.label,
-        ]), dcc.Graph(id={"type": "ex-network", "index": i},
+        ]), dcc.Graph(id={"type": "ex-network", "index": panel_index},
             figure=fig, responsive=True, style={"height": f"clamp({min_height}px, 34vw, 430px)"},
             config={"displayModeBar": False, "displaylogo": False})], className="explorer-network"))
     return html.Div(panels, className="explorer-networks")
@@ -261,8 +271,10 @@ def render(words, a, b, direction, view, membership, order, limit):
         return html.P("Choose a different comparison model, or clear it for a single-model view.")
     if a not in MODELS or (b and b not in MODELS) or direction not in DIRECTIONS:
         return html.P("Choose a model and connection direction.")
+    pairs = profiles(words, a, b)
+    display_order = _display_order(pairs)
     try:
-        series = [neighbors(model, word, direction) for model, word in profiles(words, a, b)]
+        series = [neighbors(model, word, direction) for model, word in pairs]
     except StoreUnavailable as exc:
         return html.P(str(exc), role="alert")
     allowed = {o["value"] for o in membership_options(words, a, b)}
@@ -274,7 +286,7 @@ def render(words, a, b, direction, view, membership, order, limit):
     summary = [html.H2(f"{heading} {', '.join(words)}"),
                html.P(f"{len(visible):,} of {len(ranked):,} connections shown. {NOTES[direction]}", className="source-note")]
     if len(series) == 2 and all(s.exists for s in series):
-        left, right = series
+        left, right = (series[i] for i in display_order)
         shared = sum(count == 2 for count in memberships.values())
         counts = [(f"Only {left.label}", len(left.counts) - shared), ("Shared", shared),
                   (f"Only {right.label}", len(right.counts) - shared)]
@@ -284,7 +296,8 @@ def render(words, a, b, direction, view, membership, order, limit):
     elif len(series) > 2 and all(s.exists for s in series):
         shared = sum(count == len(series) for count in memberships.values())
         summary.append(html.P(f"{shared:,} shared by all · {len(memberships):,} distinct connections in total", className="source-note"))
-    for s, total in zip(series, totals):
+    for i in display_order:
+        s, total = series[i], totals[i]
         if not s.exists:
             summary.append(html.P(f"{s.word} is absent from the {MODELS[s.model]} trial vocabulary."))
         elif not total:
@@ -295,11 +308,11 @@ def render(words, a, b, direction, view, membership, order, limit):
         return [*summary, html.P("No connections match this selection.")]
     if view == "graph":
         summary.append(html.P("Select a node to add its word. Node size and edge width show connection share.", className="source-note"))
-        plot = _graphs(series, totals, visible, direction)
+        plot = _graphs(series, totals, visible, direction, display_order)
     elif view == "compact":
-        plot = _table(series, totals, visible)
+        plot = _table(series, totals, visible, display_order)
     else:
-        plot = _bars(series, totals, visible)
+        plot = _bars(series, totals, visible, display_order)
     return [*summary, plot]
 
 
@@ -316,8 +329,9 @@ def register(app):
         options = [{"label": "Highest share", "value": "share"}, {"label": "Highest count", "value": "count"}]
         if len(series) > 1:
             options.append({"label": "Largest share difference", "value": "difference"})
-            options.extend({"label": f"Share · {word} · {MODELS[model]}", "value": f"profile-{i}"}
-                           for i, (model, word) in enumerate(series))
+            for i in _display_order(series):
+                model, word = series[i]
+                options.append({"label": f"Share · {word} · {MODELS[model]}", "value": f"profile-{i}"})
         return options, retained_option(options, previous_options, value)
 
     @app.callback(Output("ex-membership", "options"), Output("ex-membership", "value"),

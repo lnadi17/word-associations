@@ -127,8 +127,8 @@ class ArchivedExperiments(unittest.TestCase):
         items = contrast_results(["Humans", "Gemma"], ["x", "y", "z"], "a", "b", values)
         table = next(item for item in items if getattr(item, "className", "") == "table-wrap")
         rows = [[cell.children for cell in row.children] for row in table.children.children[1].children]
-        self.assertEqual(rows[0][1:4], [2, 1, "+0.3000"])
-        self.assertEqual(rows[1][1:4], [2, 1, "-0.3000"])
+        self.assertEqual(rows[0][:4], [MODELS["Gemma"], 2, 1, "-0.3000"])
+        self.assertEqual(rows[1][:4], [MODELS["Humans"], 2, 1, "+0.3000"])
         self.assertEqual(float(rows[0][4]), -float(rows[1][4]))
         self.assertEqual(rows[0][5], rows[1][5])
 
@@ -149,7 +149,7 @@ class ArchivedExperiments(unittest.TestCase):
         single = render_effect("religion", "Haiku", "Gpt5_mini", ["church", "holy", "cross"], None,
                                None, "christian", "muslim", included=cohort)
         trace = next(c.figure.data[0] for c in single._traverse() if isinstance(c, dcc.Graph))
-        self.assertEqual(list(trace.y), [MODELS[m] for m in cohort])
+        self.assertEqual(list(trace.y), [MODELS[m] for m in ("Gemma", "Gpt5_mini", "Humans")])
         self.assertEqual(trace.marker.color[1], SECONDARY)
         self.assertNotIn(ACCENT, trace.marker.color)
         rows = next(c.children for c in single._traverse() if isinstance(c, html.Tbody))

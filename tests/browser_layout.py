@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "website"))
 from wordviz.bias_norms import EMOTIONS
-from wordviz.models import GRAPH_MODELS, MATRIX_MODELS
+from wordviz.models import GRAPH_MODELS, MATRIX_MODELS, MODEL_LABELS
 from wordviz.social_domains import DOMAIN_PRIMES
 
 from playwright.sync_api import expect, sync_playwright
@@ -330,13 +330,14 @@ def check_page(page, url):
         expect(option).to_have_count(1)
         expect(option).to_contain_text(GRAPH_MODELS[key])
     compare.fill("pinned")
-    expect(menu.locator(".VirtualizedSelectOption").first).to_contain_text(GRAPH_MODELS["gpt5_mini"])
+    expect(menu.locator(".VirtualizedSelectOption").first).to_contain_text(GRAPH_MODELS["haiku"])
     expect(menu.locator(".model-pin")).to_have_count(5)
     compare.fill("OpenAI")
     expect(menu.locator(".VirtualizedSelectOption")).to_have_count(1)
     compare.press("Enter")
     expect(page.locator("#ex-model-b .Select-value-label")).to_contain_text(GRAPH_MODELS["gpt5_mini"])
-    expect(page.locator(".series-legend li")).to_have_count(2)
+    expect(page.locator(".series-legend li")).to_have_text(
+        [f"cat · {GRAPH_MODELS[key]}" for key in ("gpt5_mini", "humans")])
     check_chart(page.locator(".bar-scroll .dash-graph"), ".barlayer .point", 300)
 
     # Non-searchable selects also respond when their visible label is clicked.
@@ -353,6 +354,8 @@ def check_page(page, url):
     page.get_by_role("link", name="Lexical decision").click()
     check_chart(page.locator("#ldt-results .dash-graph"), ".boxlayer .point", 380)
     expect(page.get_by_text("Table 6 · Priming and reaction time")).to_be_visible()
+    expect(page.get_by_label("Table 6 priming effects and correlations").locator("tbody th")).to_have_text(
+        list(MATRIX_MODELS.values()))
     check_width(page)
 
     page.get_by_role("link", name="Implicit bias").click()
@@ -360,7 +363,7 @@ def check_page(page, url):
     expect(effects).to_have_count(2)
     for effect in effects.all():
         check_chart(effect, ".barlayer .point path", 320)
-    choose(page, "social-b", MATRIX_MODELS["Gpt5_mini"])
+    search_model(page, "social-b", MATRIX_MODELS["Gpt5_mini"])
     choose(page, "social-domain", "Religion")
     paired_title = page.locator("#target-preset .Select-value-label")
     expect(page.locator("#bias-targets-1 .Select-value-label")).to_have_count(25)
@@ -471,6 +474,7 @@ def search_model(page, control_id, label):
 def check_model_details(page):
     page.get_by_role("link", name="Model details", exact=True).click()
     expect(page.get_by_role("heading", name="Model and collection details")).to_be_visible()
+    expect(page.locator(".model-record summary .model-name")).to_have_text(list(MODEL_LABELS.values()))
     for key in ("gpt5_mini", "haiku", "mistral", "gemma"):
         expect(page.locator(f"#model-{key} summary .model-name")).to_have_text(GRAPH_MODELS[key])
     served = page.locator("#model-gpt5_mini")
@@ -478,11 +482,7 @@ def check_model_details(page):
     served.locator("summary").press("Enter")
     expect(served.locator("dt", has_text="Version or revision")).to_be_visible()
     expect(served.locator("dd a").first).to_have_attribute("href", re.compile("^https://"))
-    latest = "gemma4_26b_uncensored_fp8"
-    group = "Analysis datasets" if latest in GRAPH_MODELS else "Additional collections"
-    pending = page.locator(".model-catalog section").filter(
-        has=page.get_by_role("heading", name=group)
-    ).locator("#model-gemma4_26b_uncensored_fp8")
+    pending = page.locator("#model-gemma4_26b_uncensored_fp8")
     identifier = pending.locator("summary code")
     expect(identifier).to_have_text("orcarouter/Gemma-4-26B-A4B-it-Uncensored-FP8")
     pending.locator("summary").click()

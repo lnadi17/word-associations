@@ -5,9 +5,9 @@ from pathlib import Path
 
 from dash import html
 
-from .model_options import ORIGINS, pinned_models
+from .model_options import ORIGINS, pinned_label, pinned_models
 from .model_provenance import MODEL_PROVENANCE, REPO
-from .models import GRAPH_MODELS, MATRIX_MODELS
+from .models import GRAPH_MODELS, MATRIX_MODELS, MODEL_LABELS
 
 RELEASE = json.loads((Path(__file__).with_name("resources") / "network_release.json").read_text())
 
@@ -49,9 +49,12 @@ def _record(key, record):
             className="model-sources",
         )))
 
+    name = pinned_label(record["label"]) if rho is not None else html.Span(record["label"], className="model-name")
+    if key not in GRAPH_MODELS:
+        name = html.Span([name, html.Span(usage, className="model-field-label")])
     return html.Details([
         html.Summary([
-            html.Span(record["label"], className="model-name"),
+            name,
             html.Span([html.Span(identifier_label, className="model-field-label"),
                        html.Code(identifier)], className="model-identifier"),
         ]),
@@ -61,28 +64,13 @@ def _record(key, record):
 
 
 def layout():
-    pins = pinned_models()
-    available, additional = [], []
-    for key, record in MODEL_PROVENANCE.items():
-        if key in pins:
-            continue
-        group = available if key in GRAPH_MODELS else additional
-        group.append(_record(key, record))
-    sections = []
-    if pins:
-        sections.append(html.Section([
-            html.H2("Pinned models"),
-            html.P([
-                "Stars mark one release per original developer. Among documented developer APIs and original "
-                "checkpoints with complete lexical-decision data, these models have the strongest negative "
-                "correlations between activation and human reaction time across the 50 triplets. ",
-                html.A("View Table 6", href="/lexical-decision"),
-            ], className="source-note"),
-            html.Div([_record(key, MODEL_PROVENANCE[key]) for key in pins], className="model-list"),
-        ]))
-    sections.extend(
-        html.Section([html.H2(heading), html.Div(records, className="model-list")])
-        for heading, records in (("Analysis datasets", available), ("Additional collections", additional))
-        if records
-    )
-    return html.Div(sections, className="model-catalog")
+    pin_note = html.P([
+        "Stars mark one release per original developer. Among documented developer APIs and original "
+        "checkpoints with complete lexical-decision data, these models have the strongest negative "
+        "correlations between activation and human reaction time across the 50 triplets. ",
+        html.A("View Table 6", href="/lexical-decision"),
+    ], className="source-note") if pinned_models() else None
+    return html.Div([
+        pin_note,
+        html.Div([_record(key, MODEL_PROVENANCE[key]) for key in MODEL_LABELS], className="model-list"),
+    ], className="model-catalog")

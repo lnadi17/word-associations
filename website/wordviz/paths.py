@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 
 from .path_data import MODEL_NAMES, load_graph, stream
 from .model_options import model_options
+from .models import ordered_model_keys
 from .social_domains import key_for, primes_for, resolve_domain
 
 
@@ -162,7 +163,7 @@ def render(a, b, starts, ends):
         return html.P("Select at least one starting word and one target word.")
     if len(starts) * len(ends) > 12:
         return html.P("Choose up to 12 starting-word and target-word combinations per view.")
-    models = [m for m in dict.fromkeys([a, b]) if m in MODEL_NAMES]
+    models = ordered_model_keys(m for m in (a, b) if m in MODEL_NAMES)
     if not models:
         return html.P("Select a graph.")
     views = []

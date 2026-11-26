@@ -75,7 +75,9 @@ class PairedStudyEffects(unittest.TestCase):
         self.assertEqual(len(rows), 2 * len(MODELS))
         self.assertEqual([c.children for c in rows[0].children][3:9],
                          [2, 2, "+1.000", "0.250", "1.000", "Exact sign permutation"])
-        self.assertIn("Missing prime", rows[list(MODELS).index("Gemma")].children[-1].children)
+        self.assertEqual([row.children[2].children for row in rows], list(pair["primes"]) * len(MODELS))
+        gemma_index = 2 * list(MODELS).index("Gemma")
+        self.assertIn("Missing prime", rows[gemma_index].children[-1].children)
         self.assertIn("Remove", selection_problem("religion", "Humans", None, [["a"], ["t"]], pair))
         self.assertIn("one group", selection_problem("religion", "Humans", None, [["w"], ["w"]], pair))
 

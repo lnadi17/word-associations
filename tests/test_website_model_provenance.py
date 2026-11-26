@@ -9,8 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "website"))
 
 from wordviz.model_provenance import MODEL_PROVENANCE
+from wordviz.model_inclusion import included_models, network_groups
 from wordviz.model_options import ORIGINS, model_options, pinned_models
-from wordviz.models import GRAPH_MODELS, MATRIX_MODELS
+from wordviz.models import GRAPH_MODELS, MATRIX_MODELS, model_sort_key
 
 
 class ModelProvenanceTests(unittest.TestCase):
@@ -24,14 +25,32 @@ class ModelProvenanceTests(unittest.TestCase):
         for _, key in ranked:
             strongest.setdefault(ORIGINS[key], key)
         pins = list(strongest.values())[:5]
-        self.assertEqual(list(pinned_models()), pins)
+        self.assertCountEqual(pinned_models(), pins)
         for models in (GRAPH_MODELS, MATRIX_MODELS):
-            options = model_options(models)
+            options = model_options(dict(reversed(list(models.items()))))
             values = [opt["value"] for opt in options]
-            self.assertCountEqual(values, models.keys())
-            self.assertEqual([v.lower() for v in values[:1 + len(pins)]], ["humans", *pins])
+            self.assertEqual(values, sorted(models, key=lambda key: model_sort_key(models[key])))
+            starred = [opt["value"].lower() for opt in options if "pinned" in opt["search"].split()]
+            self.assertCountEqual(starred, pins)
             for option in options:
                 self.assertIn(models[option["value"]], option["search"])
+
+    def test_display_order_handles_versions_sizes_builds_and_old_selection_keys(self):
+        labels = ["Llama3.2 3B", "Llama 3.10 3B", "Nemotron 3 Nano 4B · BF16",
+                  "Nemotron 3 Nano 30B · BF16", "Nemotron 3.5 Lightning 30B",
+                  "Qwen2.5 7B", "Qwen 3.8 27B · FP8", "Qwen 3.8 27B · OrcaRouter FP8"]
+        self.assertEqual(sorted(reversed(labels), key=model_sort_key), labels)
+        for models in (MATRIX_MODELS, GRAPH_MODELS):
+            self.assertEqual(list(models.values()), sorted(models.values(), key=model_sort_key))
+        stored = ["Humans", "Gpt5_mini", "Haiku"]
+        self.assertEqual(included_models(stored), ["Haiku", "Gpt5_mini", "Humans"])
+        self.assertEqual(included_models([]), [])
+        groups = network_groups()
+        self.assertEqual(list(groups), sorted(groups, key=model_sort_key))
+        self.assertCountEqual([key for keys in groups.values() for key in keys], MATRIX_MODELS)
+        for members in groups.values():
+            names = [MATRIX_MODELS[m] for m in members]
+            self.assertEqual(names, sorted(names, key=model_sort_key))
 
     def test_served_dataset_labels_and_qualifications(self):
         # Plots and table highlighting identify series by their displayed names.

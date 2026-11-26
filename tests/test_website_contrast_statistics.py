@@ -45,5 +45,5 @@ class ContrastStatisticsTests(unittest.TestCase):
         items = contrast_results(["Humans", "Gemma"], targets, "a", "b", values)
         table = next(item for item in items if getattr(item, "className", "") == "table-wrap")
         rows = [[cell.children for cell in row.children] for row in table.children.children[1].children]
-        self.assertEqual(rows[0][5:], ["0.0625", "Exact sign permutation"])
-        self.assertEqual(rows[1][-1], "Normal approximation")
+        self.assertEqual(rows[0][-1], "Normal approximation")
+        self.assertEqual(rows[1][5:], ["0.0625", "Exact sign permutation"])

@@ -6,7 +6,7 @@ from dash import html
 
 from .experiment_data import ldt_stats, metadata
 from .model_provenance import MODEL_PROVENANCE
-from .models import MATRIX_MODELS
+from .models import MATRIX_MODELS, ordered_model_keys
 
 # Collections with a documented developer API or original checkpoint.
 # Dataset keys are lowercase here; each dropdown retains its own stored values.
@@ -40,21 +40,23 @@ def pinned_models():
     return {key: rho for rho, key in sorted(by_origin.values())[:5]}
 
 
+def pinned_label(name):
+    return html.Span([
+        html.Span("★", className="model-pin", **{"aria-hidden": "true"}),
+        html.Span(name, className="model-name"), html.Span(" (pinned)", className="visually-hidden"),
+    ])
+
+
 def model_options(models):
     pins = pinned_models()
-    priority = {key: index for index, key in enumerate(("humans", *pins))}
     options = []
-    for value in sorted(models, key=lambda key: priority.get(key.lower(), len(priority))):
+    for value in ordered_model_keys(models):
         key, name = value.lower(), models[value]
         record = MODEL_PROVENANCE[key]
         search = " ".join(filter(None, (name, record["identifier"], record.get("snapshot"))))
         if key in pins:
             origin = ORIGINS[key]
-            label = html.Span([
-                html.Span("★", className="model-pin", **{"aria-hidden": "true"}),
-                html.Span(name), html.Span(" (pinned)", className="visually-hidden"),
-            ])
-            options.append({"value": value, "label": label, "title": f"Pinned · {origin}",
+            options.append({"value": value, "label": pinned_label(name), "title": f"Pinned · {origin}",
                             "search": f"{search} {origin} pinned"})
         else:
             options.append({"value": value, "label": name, "search": search})

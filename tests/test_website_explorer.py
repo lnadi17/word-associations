@@ -52,6 +52,26 @@ class ExplorerTests(unittest.TestCase):
         self.assertEqual(retained_option(current, previous, "only-3"), "only-1")
         self.assertEqual(retained_option(current, previous, "only-0"), "all")
 
+    def test_column_order_preserves_comparison_direction_and_filter_identity(self):
+        from wordviz.explore import render
+
+        original, comparison = "humans", "gpt5_mini"
+        left, right = [neighbors(m, "cat", "forward") for m in (original, comparison)]
+        options = membership_options(["cat"], original, comparison)
+        self.assertEqual([(o["label"], o["value"]) for o in options if o["value"].startswith("only-")],
+                         [(f"Only {right.label}", "only-1"), (f"Only {left.label}", "only-0")])
+        view = render(["cat"], original, comparison, "forward", "compact", "all", "share", 10)
+        caption, head, body = view[-1].children.children
+        self.assertEqual([cell.children for cell in head.children.children],
+                         ["Word", right.label, left.label, "Δ share"])
+        self.assertIn(f"{right.label} minus {left.label}", caption.children)
+        cells = body.children[0].children
+        word = cells[0].children
+        for cell, profile in zip(cells[1:3], (right, left)):
+            self.assertEqual(cell.children.split(" · ")[0], f"{profile.counts.get(word, 0):,}")
+        expected = right.counts.get(word, 0) / right.total - left.counts.get(word, 0) / left.total
+        self.assertEqual(cells[3].children, f"{100 * expected:+.1f} pp")
+
 
 if __name__ == "__main__":
     unittest.main()

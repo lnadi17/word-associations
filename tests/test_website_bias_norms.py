@@ -151,11 +151,11 @@ class BiasNormsTests(unittest.TestCase):
         self.assertEqual(list(points), [MATRIX_MODELS["Humans"]])
         self.assertEqual(list(points[MATRIX_MODELS["Humans"]].y), [0.])
         _, matrix = self.heatmap(view)
-        self.assertEqual(list(matrix.y), [MATRIX_MODELS["Humans"], MATRIX_MODELS["Gemma"]])
-        self.assertEqual(list(matrix.z[0]), [0. if e == "anger" else None for e in EMOTIONS])
-        self.assertEqual(list(matrix.z[1]), [None] * len(EMOTIONS))
-        self.assertEqual(list(matrix.customdata[1]), [None] * len(EMOTIONS))
-        for category, tooltip in zip(EMOTIONS, matrix.customdata[0]):
+        self.assertEqual(list(matrix.y), [MATRIX_MODELS["Gemma"], MATRIX_MODELS["Humans"]])
+        self.assertEqual(list(matrix.z[1]), [0. if e == "anger" else None for e in EMOTIONS])
+        self.assertEqual(list(matrix.z[0]), [None] * len(EMOTIONS))
+        self.assertEqual(list(matrix.customdata[0]), [None] * len(EMOTIONS))
+        for category, tooltip in zip(EMOTIONS, matrix.customdata[1]):
             if category == "anger":
                 self.assertEqual(tooltip, points[MATRIX_MODELS["Humans"]].customdata[0])
                 self.assertEqual(tooltip[4], "Signed-rank effect 0")

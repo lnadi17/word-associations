@@ -64,7 +64,7 @@ Paired targets and their source notes are in `wordviz/research_identity_targets.
 
 The weighted graph snapshots supply the four non-gender domains. The six original datasets retain their archived LDT and gender matrices. Newly processed networks use matrices calculated from their filtered graphs. Table 6 reports the number of triplets with an available target and both primes in each network. The build records the source for each model. Table 2 prints *athiest*; the graph node used here is *atheist*.
 
-The Model details catalog supplies dataset keys and labels. Explore and Association paths list a dataset once its Explore counts and path graph are packaged. The experiment views also require its entries in the experiment database, social activation database and matching graph weights. Catalogued partial collections remain available on Model details.
+Model lists use the displayed name, version and build in alphanumeric order across the site. Stars identify pinned models in their usual alphabetical positions. The Model details catalog includes partial collections and shows their availability. Explore and Association paths list a dataset once its Explore counts and path graph are packaged. The experiment views also require its entries in the experiment database, social activation database and matching graph weights.
 
 To refresh after upstream research data change, run these from the repository root using the **research** environment with pandas, NumPy and SciPy installed and Git LFS data materialized:
 

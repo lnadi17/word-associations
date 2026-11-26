@@ -149,10 +149,11 @@ def scatter_chart(results, categories, category_key, category_title, value_key, 
                      zeroline=False, automargin=True, autotickangles=[0, 90], title_standoff=8)
     fig.update_yaxes(title_text=value_title, title_standoff=8, automargin=True, rangemode="tozero",
                      zeroline=True, zerolinewidth=2, zerolinecolor="#657b72")
-    legend = [(MATRIX_MODELS[m], *style) for m, style in colors.items() if m in plotted]
     others = [m for m in plotted if m not in colors]
-    if others:
-        label = MATRIX_MODELS[others[0]] if len(others) == 1 else f"{len(others)} {'other ' if legend else ''}networks"
+    legend = [(MATRIX_MODELS[m], *colors.get(m, (CONTEXT, "circle")))
+              for m in plotted if m in colors or len(others) == 1]
+    if len(others) > 1:
+        label = f"{len(others)} {'other ' if legend else ''}networks"
         legend.append((label, CONTEXT, "circle"))
     key = html.Ul([html.Li([html.Span(className="series-swatch", style={
         "backgroundColor": color, "width": "8px", "height": "8px",

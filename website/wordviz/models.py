@@ -3,18 +3,36 @@
 from contextlib import closing
 import json
 from pathlib import Path
+import re
 import sqlite3
 
 from .explore_archives import local_archive, remote_archives
 from .model_provenance import MODEL_PROVENANCE
 
 RESOURCES = Path(__file__).resolve().parent / "resources"
-MODEL_LABELS = {key: record["label"] for key, record in MODEL_PROVENANCE.items()}
 
-# The published matrices use these case-sensitive filenames and display order.
+
+def model_sort_key(label):
+    """Order the displayed model name, then its build, with numeric sizes and versions."""
+    def tokens(text):
+        parts = re.findall(r"\d+(?:\.\d+)*|[^\W\d_]+", text)
+        return tuple((0, tuple(map(int, part.split(".")))) if part[0].isdecimal() else (1, part)
+                     for part in parts)
+
+    name, _, build = label.casefold().partition(" · ")
+    return tokens(name), tokens(build), label.casefold()
+
+
+def ordered_model_keys(keys):
+    return sorted(keys, key=lambda key: model_sort_key(MODEL_PROVENANCE[key.lower()]["label"]))
+
+
+MODEL_LABELS = {key: MODEL_PROVENANCE[key]["label"] for key in ordered_model_keys(MODEL_PROVENANCE)}
+
+# Keep the case-sensitive identifiers used by the six original matrix files.
 ARCHIVED_MATRICES = ("Humans", "Gpt5_mini", "Gemma", "Haiku", "Llama3", "Mistral")
-_archive_keys = {key.lower() for key in ARCHIVED_MATRICES}
-MATRIX_KEYS = (*ARCHIVED_MATRICES, *(key for key in MODEL_LABELS if key not in _archive_keys))
+_archive_keys = {key.lower(): key for key in ARCHIVED_MATRICES}
+MATRIX_KEYS = tuple(_archive_keys.get(key, key) for key in MODEL_LABELS)
 
 GRAPH_MODELS = {
     key: label for key, label in MODEL_LABELS.items()

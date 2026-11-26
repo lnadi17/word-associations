@@ -3,7 +3,7 @@
 from dash import ALL, Input, Output, State, dcc, html
 
 from .custom_domains import NEW_DOMAIN
-from .models import MATRIX_MODELS
+from .models import MATRIX_MODELS, ordered_model_keys
 
 
 def included_models(saved):
@@ -19,7 +19,7 @@ def network_groups():
         family = next((name for name in ("Gemma", "Llama", "Nemotron", "Qwen")
                        if key.lower().startswith(name.lower())), "Individual networks")
         families.setdefault(family, []).append(key)
-    return families
+    return dict(sorted(families.items()))
 
 
 def _toggle(label, control_id, accessible_name):
@@ -59,11 +59,10 @@ def register(app):
     def picker_state(method, domain, saved, first, second):
         hidden = method not in ("priming", "valence", "emotion") or domain == NEW_DOMAIN
         selected = included_models(saved)
-        excluded = [MATRIX_MODELS[key] for key in dict.fromkeys((first, second))
-                    if key in MATRIX_MODELS and key not in selected]
+        excluded = ordered_model_keys({key for key in (first, second) if key in MATRIX_MODELS and key not in selected})
         if hidden or not excluded:
             return hidden, None, True
-        names = " and ".join(excluded)
+        names = " and ".join(MATRIX_MODELS[key] for key in excluded)
         action = "Include it to show the highlight." if len(excluded) == 1 else "Include them to show both highlights."
         return False, f"Your network selection excludes {names}. {action}", False
 
