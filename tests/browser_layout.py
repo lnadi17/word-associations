@@ -52,6 +52,7 @@ def check_network_inclusion(page, methods):
     valence = page.locator("#valence-results")
     emotion = page.locator("#emotion-results")
     traces = ".scatterlayer .trace"
+    legacy_gemma = MATRIX_MODELS["Gemma"]
     all_models = picker.get_by_role("checkbox", name="All networks", exact=True)
     gemma = picker.get_by_role("checkbox", name="Gemma family", exact=True)
     picker.locator("summary").click()
@@ -66,17 +67,17 @@ def check_network_inclusion(page, methods):
 
     # Dropdowns highlight only included models. An excluded primary stays excluded.
     marker_size = valence.locator(".js-plotly-plot").evaluate(
-        "el => el.data.find(trace => trace.name === 'Gemma').marker.size"
+        "(el, label) => el.data.find(trace => trace.name === label).marker.size", legacy_gemma
     )
-    search_model(page, "social-a", "Gemma")
-    expect(valence.locator("table").first.locator(".selected-row")).to_have_text([re.compile("Gemma")])
-    expect(valence.locator(".series-legend")).to_contain_text("Gemma")
-    page.wait_for_function("""oldSize => {
+    search_model(page, "social-a", legacy_gemma)
+    expect(valence.locator("table").first.locator(".selected-row th")).to_have_text([legacy_gemma])
+    expect(valence.locator(".series-legend")).to_contain_text(legacy_gemma)
+    page.wait_for_function("""([label, oldSize]) => {
         const traces = document.querySelector('#valence-results .js-plotly-plot')?.data;
-        return traces?.find(trace => trace.name === 'Gemma')?.marker.size > oldSize;
-    }""", arg=marker_size)
+        return traces?.find(trace => trace.name === label)?.marker.size > oldSize;
+    }""", arg=[legacy_gemma, marker_size])
     if family_count > 1:
-        picker.get_by_role("checkbox", name="Gemma", exact=True).click()
+        picker.get_by_role("checkbox", name=legacy_gemma, exact=True).click()
         expect(gemma).to_have_attribute("aria-checked", "mixed")
         expect(valence.locator(traces)).to_have_count(family_count - 1)
         expect(valence.locator("table").first.locator(".selected-row")).to_have_count(0)
@@ -96,7 +97,7 @@ def check_network_inclusion(page, methods):
     expect(all_models).to_be_checked()
     picker.locator("summary").click()
     search_model(page, "social-a", "Humans")
-    search_model(page, "social-b", "GPT-5 mini")
+    search_model(page, "social-b", MATRIX_MODELS["Gpt5_mini"])
     methods.get_by_text("Word valence", exact=True).click()
     expect(valence.locator(traces)).to_have_count(count)
     check_width(page)
@@ -162,14 +163,21 @@ def check_page(page, url):
     expect(compare).to_be_focused()
     expect(compare).to_have_css("outline-style", "none")
     expect(page.locator("#ex-model-b .Select-control")).not_to_have_css("box-shadow", "none")
-    compare.fill("pinned")
     menu = page.locator("#ex-model-b .Select-menu-outer")
-    expect(menu.locator(".VirtualizedSelectOption").first).to_contain_text("GPT-5 mini")
+    for query, key in [("mistral-7b-instruct-v0.1.Q4_K_M.gguf", "mistral"),
+                       ("claude-3-5-haiku-latest", "haiku"), ("claude-3-5-haiku-20241022", "haiku"),
+                       ("gpt-5-mini-2025-08-07", "gpt5_mini")]:
+        compare.fill(query)
+        option = menu.locator(".VirtualizedSelectOption")
+        expect(option).to_have_count(1)
+        expect(option).to_contain_text(GRAPH_MODELS[key])
+    compare.fill("pinned")
+    expect(menu.locator(".VirtualizedSelectOption").first).to_contain_text(GRAPH_MODELS["gpt5_mini"])
     expect(menu.locator(".model-pin")).to_have_count(5)
     compare.fill("OpenAI")
     expect(menu.locator(".VirtualizedSelectOption")).to_have_count(1)
     compare.press("Enter")
-    expect(page.locator("#ex-model-b .Select-value-label")).to_contain_text("GPT-5 mini")
+    expect(page.locator("#ex-model-b .Select-value-label")).to_contain_text(GRAPH_MODELS["gpt5_mini"])
     expect(page.locator(".series-legend li")).to_have_count(2)
     check_chart(page.locator(".bar-scroll .dash-graph"), ".barlayer .point", 300)
 
@@ -194,7 +202,7 @@ def check_page(page, url):
     expect(effects).to_have_count(2)
     for effect in effects.all():
         check_chart(effect, ".barlayer .point path", 320)
-    choose(page, "social-b", "GPT-5 mini")
+    choose(page, "social-b", MATRIX_MODELS["Gpt5_mini"])
     choose(page, "social-domain", "Religion")
     paired_title = page.locator("#target-preset .Select-value-label")
     expect(page.locator("#bias-targets-1 .Select-value-label")).to_have_count(25)
@@ -239,7 +247,7 @@ def check_page(page, url):
     methods.get_by_text("Association paths", exact=True).click()
     expect(page.locator("#model-inclusion-picker")).to_be_hidden()
     expect(page.locator("#path-start")).to_contain_text("democrat")
-    expect(page.locator("#path-b")).to_contain_text("GPT-5 mini")
+    expect(page.locator("#path-b")).to_contain_text(GRAPH_MODELS["gpt5_mini"])
     check_chart(page.locator("#path-results .dash-graph").first, ".scatterlayer .point", 185)
     check_width(page)
 
@@ -297,6 +305,8 @@ def search_model(page, control_id, label):
 def check_model_details(page):
     page.get_by_role("link", name="Model details", exact=True).click()
     expect(page.get_by_role("heading", name="Model and collection details")).to_be_visible()
+    for key in ("gpt5_mini", "haiku", "mistral", "gemma"):
+        expect(page.locator(f"#model-{key} summary .model-name")).to_have_text(GRAPH_MODELS[key])
     served = page.locator("#model-gpt5_mini")
     expect(served.locator("summary")).to_contain_text("gpt-5-mini-2025-08-07")
     served.locator("summary").press("Enter")

@@ -24,12 +24,14 @@ def lwow_table(model):
 def openai_collection(size):
     stem = f"gpt5_{size}"
     return {
-        "label": f"GPT-5 {size}", "identifier_label": "Requested API snapshot",
+        "label": f"GPT-5 {size} · 2025-08-07", "identifier_label": "Requested API snapshot",
         "identifier": f"gpt-5-{size}-2025-08-07",
         "revision": "2025-08-07, the dated OpenAI API snapshot in the generation configuration.",
         "collection": "Local English free-association collection using OpenAI’s batch API.",
-        "sources": (file_source("Generation configuration", f"configs/lwow_{stem}.yaml#L16"),
-                    file_source("Raw response table", f"data/raw/{stem}_responses.csv")),
+        "sources": (("Original generation configuration",
+                     f"{REPO}/blob/03a43268d0ef41638ed36522ca571c983f846f27/configs/lwow_{stem}.yaml#L15-L19"),
+                    file_source("Raw response table", f"data/raw/{stem}_responses.csv"),
+                    ("OpenAI model snapshots", f"https://developers.openai.com/api/docs/models/gpt-5-{size}")),
     }
 
 
@@ -74,19 +76,23 @@ MODEL_PROVENANCE = {
                     ("SWOW study", "https://doi.org/10.3758/s13428-018-1115-7")),
     },
     "gemma": {
-        "label": "Gemma", "identifier_label": "Archived collection label", "identifier": "gemma",
-        "revision": "The legacy collection records the family only. Size, tuning edition and exact checkpoint are unknown.",
-        "collection": "Imported cue-folder responses, present in the repository by March 1, 2026. "
-                      "The dated Gemma 4 runs have their own entries below.",
-        "sources": (file_source("Collection configuration", "configs/lwow_gemma.yaml#L16"),
-                    file_source("Import from cue folders", "scripts/gemma_outputs_to_csv.py#L21-L23"),
+        "label": "Gemma · checkpoint unrecorded", "identifier_label": "Archived collection label", "identifier": "gemma",
+        "revision": "The original trial table records cues and responses. The processing configuration identifies "
+                    "the Gemma family. The specific release, size and tuning edition remain unknown.",
+        "collection": "Imported from per-cue text files on March 1, 2026. The later Gemma 4 collections "
+                      "have separate records with their configured checkpoints.",
+        "sources": (("Processing configuration",
+                     f"{REPO}/blob/cf3f13469ff1485afc42e7b886c9730fed438f0d/configs/lwow_gemma.yaml#L16"),
+                    ("Original cue-folder importer",
+                     f"{REPO}/blob/3d932c2c39b3bcb3c21f3fead1868b07c9e20d75/scripts/gemma_outputs_to_csv.py#L21-L24"),
                     ("Original data import", f"{REPO}/commit/3d932c2c39b3bcb3c21f3fead1868b07c9e20d75")),
     },
     "gpt5_mini": openai_collection("mini"),
     "haiku": {
-        "label": "Haiku", "identifier_label": "Published API alias", "identifier": "claude-3-5-haiku-latest",
-        "revision": "Anthropic documents claude-3-5-haiku-20241022 as the snapshot for this Claude 3.5 Haiku alias. "
-                    "The published trial table does not record per-request model IDs.",
+        "label": "Claude 3.5 Haiku · 2024-10-22", "identifier_label": "Published API alias",
+        "identifier": "claude-3-5-haiku-latest", "snapshot": "claude-3-5-haiku-20241022",
+        "revision": "The authors report the API alias. The date in the display name comes from Anthropic’s "
+                    "documented alias mapping. The released responses omit per-request model IDs.",
         "collection": "Anthropic API collection published by the LWOW authors.",
         "sources": (LWOW_PAPER, lwow_table("Haiku"),
                     ("Anthropic’s alias reference", "https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide")),
@@ -98,7 +104,7 @@ MODEL_PROVENANCE = {
         "sources": (LWOW_PAPER, lwow_table("Llama3")),
     },
     "mistral": {
-        "label": "Mistral", "identifier_label": "Authors’ configured model file",
+        "label": "Mistral 7B Instruct v0.1 · Q4_K_M", "identifier_label": "Authors’ configured model file",
         "identifier": "mistral-7b-instruct-v0.1.Q4_K_M.gguf",
         "revision": "Mistral 7B Instruct v0.1, Q4_K_M quantization in GGUF format. A weights checksum is unrecorded.",
         "collection": "LWOW authors’ published Mistral responses. Their generation script supplies the model filename.",

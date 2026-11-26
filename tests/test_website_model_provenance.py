@@ -34,6 +34,8 @@ class ModelProvenanceTests(unittest.TestCase):
                 self.assertIn(models[option["value"]], option["search"])
 
     def test_served_dataset_labels_and_qualifications(self):
+        # Plots and table highlighting identify series by their displayed names.
+        self.assertEqual(len(set(GRAPH_MODELS.values())), len(GRAPH_MODELS))
         for key, label in GRAPH_MODELS.items():
             record = MODEL_PROVENANCE[key]
             self.assertEqual(record["label"], label)
@@ -42,6 +44,23 @@ class ModelProvenanceTests(unittest.TestCase):
             key = "gpt5_" + size
             config = (ROOT / "configs" / f"lwow_{key}.yaml").read_text()
             self.assertIn(f'model: "{MODEL_PROVENANCE[key]["identifier"]}"', config)
+
+    def test_archived_versions_are_visible_and_searchable_under_the_original_keys(self):
+        cases = [
+            ("Gpt5_mini", "GPT-5 mini · 2025-08-07", ["gpt-5-mini-2025-08-07"]),
+            ("Haiku", "Claude 3.5 Haiku · 2024-10-22", ["claude-3-5-haiku-latest", "claude-3-5-haiku-20241022"]),
+            ("Mistral", "Mistral 7B Instruct v0.1 · Q4_K_M", ["mistral-7b-instruct-v0.1.Q4_K_M.gguf"]),
+            ("Gemma", "Gemma · checkpoint unrecorded", []),
+        ]
+        for catalog in (GRAPH_MODELS, MATRIX_MODELS):
+            options = model_options(catalog)
+            for matrix_key, label, identifiers in cases:
+                with self.subTest(matrix_key=matrix_key):
+                    key = matrix_key if catalog is MATRIX_MODELS else matrix_key.lower()
+                    self.assertEqual(catalog[key], label)
+                    for query in [label, *identifiers]:
+                        matches = [opt["value"] for opt in options if query.casefold() in opt["search"].casefold()]
+                        self.assertEqual(matches, [key], query)
 
     def test_batched_runs_have_separate_records_and_traceable_files(self):
         run_root = ROOT / "LAG" / "outputs"

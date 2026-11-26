@@ -24,6 +24,8 @@ def _record(key, record):
         usage = record.get("availability", "Collected responses")
 
     fields = [("Availability", usage)]
+    if record.get("snapshot"):
+        fields.append(("Snapshot mapped from alias", html.Code(record["snapshot"])))
     rho = pinned_models().get(key)
     if rho is not None:
         fields.append(("Pinned model", f"{ORIGINS[key]} · Table 6 Spearman ρ = {rho:.3f}"))

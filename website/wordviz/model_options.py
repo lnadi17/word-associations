@@ -46,6 +46,8 @@ def model_options(models):
     options = []
     for value in sorted(models, key=lambda key: priority.get(key.lower(), len(priority))):
         key, name = value.lower(), models[value]
+        record = MODEL_PROVENANCE[key]
+        search = " ".join(filter(None, (name, record["identifier"], record.get("snapshot"))))
         if key in pins:
             origin = ORIGINS[key]
             label = html.Span([
@@ -53,7 +55,7 @@ def model_options(models):
                 html.Span(name), html.Span(" (pinned)", className="visually-hidden"),
             ])
             options.append({"value": value, "label": label, "title": f"Pinned · {origin}",
-                            "search": f"{name} {origin} {MODEL_PROVENANCE[key]['identifier']} pinned"})
+                            "search": f"{search} {origin} pinned"})
         else:
-            options.append({"value": value, "label": name, "search": name})
+            options.append({"value": value, "label": name, "search": search})
     return options

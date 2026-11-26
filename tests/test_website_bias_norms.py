@@ -25,6 +25,7 @@ class BiasNormsTests(unittest.TestCase):
 
         renderers = [lambda a, b: valence_view("religion", a, b),
                      lambda a, b: emotion_view("politics", a, b, "democrat", "republican")]
+        gpt_label = MATRIX_MODELS["Gpt5_mini"]
         for render in renderers:
             original = by_name(render("Humans", "Gpt5_mini"))
             changed = by_name(render("Gemma", "Humans"))
@@ -32,9 +33,9 @@ class BiasNormsTests(unittest.TestCase):
             for name, trace in original.items():
                 self.assertEqual((trace.x, trace.y), (changed[name].x, changed[name].y))
             self.assertEqual(original["Humans"].marker.color, ACCENT)
-            self.assertEqual(original["GPT-5 mini"].marker.symbol, "diamond")
+            self.assertEqual(original[gpt_label].marker.symbol, "diamond")
             self.assertEqual(changed["Humans"].marker.color, SECONDARY)
-            self.assertEqual(changed["GPT-5 mini"].marker.color, CONTEXT)
+            self.assertEqual(changed[gpt_label].marker.color, CONTEXT)
 
     def test_inclusion_controls_figure_tables_and_empty_state(self):
         only = ["Gpt5_mini"]
@@ -42,7 +43,7 @@ class BiasNormsTests(unittest.TestCase):
                  emotion_view("politics", "Humans", "Gpt5_mini", "democrat", "republican", only)]
         for view in views:
             graph = next(c for c in view._traverse() if isinstance(c, dcc.Graph))
-            self.assertEqual([trace.name for trace in graph.figure.data], ["GPT-5 mini"])
+            self.assertEqual([trace.name for trace in graph.figure.data], [MATRIX_MODELS["Gpt5_mini"]])
             self.assertEqual(graph.figure.data[0].marker.color, SECONDARY)
             bodies = [c for c in view._traverse() if isinstance(c, html.Tbody)]
             self.assertTrue(all(row.className == "selected-row" for tb in bodies for row in tb.children))
@@ -62,7 +63,7 @@ class BiasNormsTests(unittest.TestCase):
         graph = next(c for c in panel._traverse() if isinstance(c, dcc.Graph))
         self.assertEqual([(t.name, t.y, t.marker.color) for t in graph.figure.data], [("Humans", (0.,), CONTEXT)])
         notes = [c.children for c in panel._traverse() if isinstance(c, html.Li) and isinstance(c.children, str)]
-        self.assertTrue(any("Gemma" in note and "republican" in note for note in notes))
+        self.assertTrue(any(MATRIX_MODELS["Gemma"] in note and "republican" in note for note in notes))
 
     def test_all_domain_models_have_valence_and_emotion_coverage(self):
         for domain, primes in DOMAIN_PRIMES.items():
